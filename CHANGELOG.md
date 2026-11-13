@@ -4,7 +4,7 @@
 
 ## 0.1.0
 
-首个可用版本。
+首个可用版本，已发布至 npm：<https://www.npmjs.com/package/dsh-ustc-iwan>
 
 ### 功能
 

@@ -3,6 +3,9 @@
 本文件说明如何把 **dsh-ustc-iwan** 发布到 npm 公共注册表，使词元工坊的插件页可以直接用
 **包名** 安装（`dsh-ustc-iwan`）。
 
+> **当前状态：`dsh-ustc-iwan@0.1.0` 已发布**（<https://www.npmjs.com/package/dsh-ustc-iwan>）。
+> 本文档同时是首次发布的操作手册与后续发版的参照。
+>
 > 本机实测环境：**node v26.7.0 / npm 11.19.0**（`C:\app\nodejs`）。
 > 命令在仓库根目录（本文件上一级）执行。
 
@@ -31,7 +34,7 @@ npm whoami          # 应输出你的 npm 用户名
 npm view dsh-ustc-iwan version
 ```
 
-- 输出 `404 Not Found` → **名字可用**（写本文时实测为 404）。
+- 输出 `404 Not Found` → **名字可用**（`dsh-ustc-iwan` 已于 0.1.0 发布，此分支仅用于全新包名）。
 - 输出了版本号 → 名字已被占用，必须改 `package.json` 的 `name`（例如
   `@你的作用域/dsh-ustc-iwan`；带作用域的包默认私有，发布时需加 `--access public`）。
 

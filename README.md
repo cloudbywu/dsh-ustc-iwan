@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-%E8%AF%8D%E5%85%83%E5%B7%A5%E5%9D%8A-1f6feb)](https://github.com/deepseek-ai/deepseek-harness)
+[![npm](https://img.shields.io/npm/v/dsh-ustc-iwan.svg)](https://www.npmjs.com/package/dsh-ustc-iwan)
 
 让**词元工坊**（DSH / DeepSeek Harness）访问 **USTC 系列模型（如 llm.ustc.edu.cn）与科大系列网站**
 时自动走 [ustc-iwan](https://github.com/yyy1mu/ustc-iwan)，其余流量保持原样；
@@ -16,8 +17,8 @@
 词元工坊 → 侧边栏「插件」→ 安装，把下面任一来源粘贴进去，然后**完全退出并重启应用**：
 
 ```text
-https://github.com/cloudbywu/dsh-ustc-iwan      # GitHub 仓库地址（推荐）
-github:cloudbywu/dsh-ustc-iwan                  # 同上，GitHub 简写
+dsh-ustc-iwan                                   # npm 包名（最简单）
+https://github.com/cloudbywu/dsh-ustc-iwan      # GitHub 仓库地址
 C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝对路径）
 ```
 
@@ -77,11 +78,17 @@ C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝�
 
 ## 安装
 
-词元工坊的插件页支持 **GitHub 仓库地址 / npm 包名 / 本地目录路径** 三种来源，
+词元工坊的插件页支持 **npm 包名 / GitHub 仓库地址 / 本地目录路径** 三种来源，
 任选一种粘贴进「插件 → 安装」即可。安装完成后**完全退出并重启应用**，
 再打开 设置 → USTC IWAN。
 
-### 方式一：GitHub 仓库地址（推荐）
+| 来源 | 适合 | 升级方式 |
+| --- | --- | --- |
+| npm 包名（最简单） | 只想用，不改代码 | 插件页「检查更新」 |
+| GitHub 仓库地址 | 想跟随仓库最新提交 | 插件页「检查更新」 |
+| 本地目录路径 | 想改代码（改完重启即生效） | 手动 `git pull` |
+
+### 方式一：GitHub 仓库地址
 
 在「插件 → 安装」中输入仓库地址：
 
@@ -109,13 +116,14 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 dsh-ustc-iwan
 ```
 
+已发布到 npm 公共注册表：<https://www.npmjs.com/package/dsh-ustc-iwan>
+
 ```bash
-npm view dsh-ustc-iwan version   # 有版本号即可安装；404 表示尚未发布
+npm view dsh-ustc-iwan version   # 应为 0.1.0
 ```
 
-> 注册表上查不到版本号时请改用方式一（GitHub）或方式三（本地目录）。
-> 维护者发布流程见 [docs/PUBLISHING.md](docs/PUBLISHING.md)（登录与 2FA、打包自检、
-> 发布、验证、版本升级、回滚与常见报错对照）。
+> 国内镜像（npmmirror 等）同步有延迟，刚发布后可能查不到；等几分钟或改用
+> 方式一（GitHub）安装。维护者发布流程见 [docs/PUBLISHING.md](docs/PUBLISHING.md)。
 
 ### 方式三：本地目录路径
 
