@@ -3,13 +3,25 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-%E8%AF%8D%E5%85%83%E5%B7%A5%E5%9D%8A-1f6feb)](https://github.com/deepseek-ai/deepseek-harness)
 
-让[词元工坊 / DSH](#)（DeepSeek Harness）访问 **USTC 系列模型（如 llm.ustc.edu.cn）与科大系列网站**
+让**词元工坊**（DSH / DeepSeek Harness）访问 **USTC 系列模型（如 llm.ustc.edu.cn）与科大系列网站**
 时自动走 [ustc-iwan](https://github.com/yyy1mu/ustc-iwan)，其余流量保持原样；
 与 **Clash TUN、WireGuard、Panabit iWAN** 等代理/隧道软件**共存不冲突**。
 
 - 不改系统路由、不创建虚拟网卡、不改注册表——分流完全在应用进程内完成。
 - 零第三方依赖：只需宿主自带的 `@deepseek-ai/dsh-http-proxy`（不可用时自动降级）。
 - 带完整设置界面：状态指示灯、一键下载 iWAN 客户端、配置表单、分流测试、运行日志。
+
+## 快速安装
+
+词元工坊 → 侧边栏「插件」→ 安装，把下面任一来源粘贴进去，然后**完全退出并重启应用**：
+
+```text
+https://github.com/cloudbywu/dsh-ustc-iwan      # GitHub 仓库地址（推荐）
+github:cloudbywu/dsh-ustc-iwan                  # 同上，GitHub 简写
+C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝对路径）
+```
+
+详见 [安装](#安装)。安装后打开 **设置 → USTC IWAN**。
 
 ---
 
@@ -65,28 +77,77 @@
 
 ## 安装
 
-### 方式一：本地路径安装（推荐）
+词元工坊的插件页支持 **GitHub 仓库地址 / npm 包名 / 本地目录路径** 三种来源，
+任选一种粘贴进「插件 → 安装」即可。安装完成后**完全退出并重启应用**，
+再打开 设置 → USTC IWAN。
+
+### 方式一：GitHub 仓库地址（推荐）
+
+在「插件 → 安装」中输入仓库地址：
+
+```text
+https://github.com/cloudbywu/dsh-ustc-iwan
+```
+
+以下写法等价，任选其一：
+
+| 写法 | 说明 |
+| --- | --- |
+| `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
+| `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
+| `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.0` | 固定到某个 tag / 分支 / 提交 |
+| `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
+
+> 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
+> 在插件页对它执行**检查更新 / 更新**，或改为固定提交后重新安装。
+> 首次安装需要宿主能访问 GitHub。
+
+### 方式二：npm 包名
+
+```text
+dsh-ustc-iwan
+```
+
+> ⚠️ 该包**目前尚未发布到 npm**，此方式暂不可用，请先用方式一或方式三。
+> 若你自行 fork 并发布，把这里换成你的包名即可。
+
+### 方式三：本地目录路径
 
 ```bash
 git clone https://github.com/cloudbywu/dsh-ustc-iwan.git
 ```
 
-词元工坊 → 侧边栏「插件」→ 安装 → **本地路径**，指向克隆下来的目录，
-然后**完全退出并重启应用**。
+在「插件 → 安装」中填入**绝对路径**（也支持 `file:` / `link:` 前缀）：
 
-### 方式二：直接链接到 profile
+```text
+C:\Users\<你>\dsh-ustc-iwan
+file:C:\Users\<你>\dsh-ustc-iwan
+```
+
+或直接下 `Release` 里的 `dsh-ustc-iwan-0.1.0.zip` 解压，再按同样方式填入解压目录。
+
+> **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
+> 以 `link:` 链接方式安装时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**，
+> 链接安装同样可用；这种方式改代码后重启应用即生效。
+
+### 方式四：直接写进 profile（CLI / 进阶）
 
 ```bash
 # 把 <DSH_HOME> 换成你的数据目录：
 #   Windows 桌面端：%APPDATA%\tokenworks-desktop-harness
 #   CLI 默认：~/.dsh
 cd <DSH_HOME>/profiles/<profile>
-pnpm add link:<本仓库绝对路径>
+pnpm add github:cloudbywu/dsh-ustc-iwan     # 或 link:<本仓库绝对路径>
 ```
 
-并在该 profile 的 `package.json` 中把 `dsh-ustc-iwan` 加入 `dsh.profile.bundles`。
+并把 `dsh-ustc-iwan` 加入该 profile `package.json` 的 `dsh.profile.bundles`。
 
-> 插件以链接方式加载时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**。
+### 安装后
+
+1. **完全退出并重启词元工坊**（客户端 bundle 在启动时组合，仅刷新页面可能不够）；
+2. 打开 **设置 → USTC IWAN**，确认「分流代理」指示灯为绿色；
+3. 按 [首次使用](#首次使用) 下载 iWAN 客户端并完成一次认证。
 
 ## 首次使用
 
