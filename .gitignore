@@ -1,0 +1,16 @@
+# 依赖与构建产物
+node_modules/
+*.zip
+*.tgz
+
+# 本地测试残留
+test-sandbox/
+*-test.cjs
+parse-check.cjs
+final-check.cjs
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

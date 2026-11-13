@@ -1,0 +1,59 @@
+{
+  "name": "dsh-ustc-iwan",
+  "version": "0.1.0",
+  "description": "词元工坊插件：访问 USTC 模型与校内站点时走 ustc-iwan，其余流量保持原样，与 Clash TUN / WireGuard / Panabit iWAN 共存。",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-http-proxy": ">=0.2.1-rc.2 <0.3.0-0",
+    "react": "^18.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloudbywu/dsh-ustc-iwan.git"
+  },
+  "homepage": "https://github.com/cloudbywu/dsh-ustc-iwan#readme",
+  "bugs": {
+    "url": "https://github.com/cloudbywu/dsh-ustc-iwan/issues"
+  },
+  "author": "cloudbywu",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "tokenworks",
+    "ustc",
+    "iwan",
+    "vpn",
+    "proxy",
+    "split-tunnel"
+  ]
+}

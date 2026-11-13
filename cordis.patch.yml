@@ -1,0 +1,5 @@
+# dsh-ustc-iwan bundle patch: 只挂一个 Host 侧插件行。
+# 行名必须等于包名：加载器通过解析 '<row-name>/package.json' 定位包目录。
+- insert:
+    - id: dsh-ustc-iwan
+      name: 'dsh-ustc-iwan'
