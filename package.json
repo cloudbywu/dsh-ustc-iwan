@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "词元工坊插件：访问 USTC 模型与校内站点时走 ustc-iwan，其余流量保持原样，与 Clash TUN / WireGuard / Panabit iWAN 共存。",
   "license": "MIT",
+  "author": "cloudbywu",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -15,7 +16,8 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/PUBLISHING.md"
   ],
   "engines": {
     "node": ">=24.9.0"
@@ -37,6 +39,17 @@
     "@deepseek-ai/dsh-http-proxy": ">=0.2.1-rc.2 <0.3.0-0",
     "react": "^18.2.0"
   },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-http-proxy": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cloudbywu/dsh-ustc-iwan.git"
@@ -45,7 +58,6 @@
   "bugs": {
     "url": "https://github.com/cloudbywu/dsh-ustc-iwan/issues"
   },
-  "author": "cloudbywu",
   "keywords": [
     "dsh",
     "dsh-plugin",
