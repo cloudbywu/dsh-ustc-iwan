@@ -109,11 +109,13 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 dsh-ustc-iwan
 ```
 
-> ⚠️ 该包**目前尚未发布到 npm**，此方式暂不可用，请先用方式一或方式三。
->
-> 维护者发布流程见 [docs/PUBLISHING.md](docs/PUBLISHING.md)（登录、自检、发布、
-> 验证、回滚与常见报错对照）。发布完成后本段会改为正式可用说明；
-> 若你自行 fork 并发布，把上面的包名换成你的即可。
+```bash
+npm view dsh-ustc-iwan version   # 有版本号即可安装；404 表示尚未发布
+```
+
+> 注册表上查不到版本号时请改用方式一（GitHub）或方式三（本地目录）。
+> 维护者发布流程见 [docs/PUBLISHING.md](docs/PUBLISHING.md)（登录与 2FA、打包自检、
+> 发布、验证、版本升级、回滚与常见报错对照）。
 
 ### 方式三：本地目录路径
 
