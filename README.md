@@ -1,8 +1,8 @@
-# dsh-ustc-iwan
+# @cloudbywu/dsh-ustc-iwan
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![DSH](https://img.shields.io/badge/DSH-%E8%AF%8D%E5%85%83%E5%B7%A5%E5%9D%8A-1f6feb)](https://github.com/deepseek-ai/deepseek-harness)
-[![npm](https://img.shields.io/npm/v/dsh-ustc-iwan.svg)](https://www.npmjs.com/package/dsh-ustc-iwan)
+[![npm](https://img.shields.io/npm/v/@cloudbywu/dsh-ustc-iwan.svg)](https://www.npmjs.com/package/@cloudbywu/dsh-ustc-iwan)
 
 让**词元工坊**（DSH / DeepSeek Harness）访问 **USTC 系列模型（如 llm.ustc.edu.cn）与科大系列网站**
 时自动走 [ustc-iwan](https://github.com/yyy1mu/ustc-iwan)，其余流量保持原样；
@@ -17,11 +17,12 @@
 词元工坊 → 侧边栏「插件」→ 安装，把下面任一来源粘贴进去，然后**完全退出并重启应用**：
 
 ```text
-dsh-ustc-iwan                                   # npm 包名（最简单）
+@cloudbywu/dsh-ustc-iwan                       # npm 包名
 https://github.com/cloudbywu/dsh-ustc-iwan      # GitHub 仓库地址
 C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝对路径）
 ```
 
+旧的无作用域包已撤销，请使用 scoped 包名；若官方源暂不可见，可改用 GitHub 或本地路径。
 详见 [安装](#安装)。安装后打开 **设置 → USTC IWAN**。
 
 ---
@@ -113,17 +114,18 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 ### 方式二：npm 包名
 
 ```text
-dsh-ustc-iwan
+@cloudbywu/dsh-ustc-iwan
 ```
 
-已发布到 npm 公共注册表：<https://www.npmjs.com/package/dsh-ustc-iwan>
+旧的无作用域包已撤销。npm 安装使用 `@cloudbywu/dsh-ustc-iwan`：
+<https://www.npmjs.com/package/@cloudbywu/dsh-ustc-iwan>
 
 ```bash
-npm view dsh-ustc-iwan version   # 应为 0.1.0
+npm view @cloudbywu/dsh-ustc-iwan version --registry=https://registry.npmjs.org/
 ```
 
-> 国内镜像（npmmirror 等）同步有延迟，刚发布后可能查不到；等几分钟或改用
-> 方式一（GitHub）安装。维护者发布流程见 [docs/PUBLISHING.md](docs/PUBLISHING.md)。
+> 若查询返回 404，请确认包名、公开访问权限和注册表；刚发布的包也可能尚不可见。
+> 暂时可使用方式一（GitHub）或本地路径安装。维护者发布流程见 [发布指南](docs/PUBLISHING.md)。
 
 ### 方式三：本地目录路径
 
@@ -151,10 +153,11 @@ file:C:\Users\<你>\dsh-ustc-iwan
 #   Windows 桌面端：%APPDATA%\tokenworks-desktop-harness
 #   CLI 默认：~/.dsh
 cd <DSH_HOME>/profiles/<profile>
-pnpm add github:cloudbywu/dsh-ustc-iwan     # 或 link:<本仓库绝对路径>
+pnpm add @cloudbywu/dsh-ustc-iwan
+# 也可用 pnpm add github:cloudbywu/dsh-ustc-iwan 或 link:<本仓库绝对路径>
 ```
 
-并把 `dsh-ustc-iwan` 加入该 profile `package.json` 的 `dsh.profile.bundles`。
+并把 `@cloudbywu/dsh-ustc-iwan` 加入该 profile `package.json` 的 `dsh.profile.bundles`。
 
 ### 安装后
 
@@ -166,31 +169,32 @@ pnpm add github:cloudbywu/dsh-ustc-iwan     # 或 link:<本仓库绝对路径>
 
 1. 打开 **设置 → USTC iWAN**；
 2. 点 **下载 iwan-client-oidc**（自动存到 `<DSH_HOME>/cache/ustc-iwan/`，
-   不做系统级安装；也可自行下载后填入「客户端路径」）；
-3. 完成一次统一身份认证（终端执行，只需一次）：
-
-   ```bat
-   iwan-client-oidc-windows-x86_64.exe --fetch
-   ```
-
-   按提示在浏览器完成认证，把 `com.panabit.mobile://...` 回调 URL 粘贴回终端。
-   线路配置保存在 `~/.config/iwan/servers.json`。
+   不做系统级安装；也可自行解压下载后填入「客户端路径」）。上游提供 ZIP，插件解出 exe，
+   并在使用自动缓存前校验 SHA-256；旧缓存缺少记录时请重新下载。手动路径由用户确认可信。
+   此哈希用于检测本地缓存变化，不是上游发布签名。
+3. 在卡片的「统一身份认证」中点「开始认证」，打开授权页完成登录，
+   把 `com.panabit.mobile://...` 回调 URL 粘贴回卡片并提交。
+   线路配置保存在 `~/.config/iwan/servers.json`；启动、等待和提交阶段均可取消。
+   如需终端方式，也可自行运行 `iwan-client-oidc-windows-x86_64.exe --fetch`。
 
 4. 回到卡片点 **启动 iWAN**（或在配置里开启「托管 iWAN 客户端」）；
 5. 用 **测试分流** 输入 `llm.ustc.edu.cn`，显示「走 iWAN」即成功。
 
 ## 设置卡片
 
-安装后 **设置 → USTC iWAN** 出现一张卡片，分四组：
+安装后 **设置 → USTC iWAN** 出现一张卡片，包含以下分组：
 
 | 分组 | 内容 |
 | --- | --- |
 | 运行状态 | 分流代理 / 出站策略 / iWAN SOCKS5 / 托管进程 四个指示灯；启动 iWAN、停止托管、刷新状态、**分流测试** |
+| 统一身份认证 | 应用内授权、提交回调、全阶段取消与结果状态 |
 | iWAN 客户端 | **一键下载 iwan-client-oidc**（进度条、sha256 记录、失败自动清理） |
-| 配置 | 全部配置项表单化，保存即时生效（改端口自动重启代理；开托管自动连接） |
+| 配置 | SOCKS 地址、端口和日志开关热更新；轮询保留未保存草稿，支持显式放弃修改 |
 | 最近日志 | 最近 40 条运行日志 |
 
-宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`。
+宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`，
+以及 `/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
+关闭分流或卸载插件会清理托管进程及全部代理隧道，外部启动的进程不受影响。
 
 ## 配置项
 
@@ -246,9 +250,21 @@ pnpm add github:cloudbywu/dsh-ustc-iwan     # 或 link:<本仓库绝对路径>
 - 网段决策只覆盖 IPv4；IPv6 字面量或仅有 AAAA 记录时按域名后缀兜底。
 - 浏览器渲染层自身发出的请求不经宿主网络栈，不在分流范围内；分流目标是
   **应用出站请求**（模型调用、web 抓取、子进程等）。
-- 自动化测试覆盖：CIDR 边界、SOCKS5 握手、分流决策、设置热应用与策略恢复。
+- iWAN 不可达时仍按设计回退直连，本插件不是强制禁止直连的隐私代理。
+- 测试覆盖代理分包与数据交接、HTTP/TLS 上游、认证和进程取消、缓存校验、配置热更新、表单草稿及卸载清理。
+- 测试使用本机回环与模拟进程，不替代真实校园认证和宿主环境验收。
 
 ## 开发
+
+使用 Node.js 24.9.0 或更新版本，无需安装额外测试依赖：
+
+```sh
+npm run check
+npm test
+```
+
+测试命令已包含隔离模拟需要的 `--experimental-vm-modules`；网络测试只使用本机回环临时端口。
+CI 配置覆盖 Windows / Linux 的 Node 24、26，不自动发布 npm。
 
 ```
 lib/index.js          Host 入口（运行时 + 路由挂载）

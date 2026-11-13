@@ -1,11 +1,15 @@
 {
-  "name": "dsh-ustc-iwan",
+  "name": "@cloudbywu/dsh-ustc-iwan",
   "version": "0.1.0",
   "description": "词元工坊插件：访问 USTC 模型与校内站点时走 ustc-iwan，其余流量保持原样，与 Clash TUN / WireGuard / Panabit iWAN 共存。",
   "license": "MIT",
   "author": "cloudbywu",
   "type": "module",
   "main": "lib/index.js",
+  "scripts": {
+    "test": "node --experimental-vm-modules --test test/*.test.mjs",
+    "check": "node scripts/check.mjs"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
