@@ -58,7 +58,7 @@ async function fixture({ ports = [false, true], fallback = false, spawnError, au
   const time = clock()
   const children = []
   const sockets = []
-  const context = vm.createContext({ AbortController, setTimeout: time.setTimeout, clearTimeout: time.clearTimeout })
+  const context = vm.createContext({ URL, AbortController, setTimeout: time.setTimeout, clearTimeout: time.clearTimeout })
   const cp = new vm.SyntheticModule(['spawn'], function () {
     this.setExport('spawn', (exe, args, options) => {
       if (spawnError) throw spawnError
@@ -390,4 +390,38 @@ test('client: individual TCP probe has deadline and abort cancellation', async (
   assert.equal(f.sockets.every((socket) => socket.destroyed), true)
   assert.equal(getEventListeners(controller.signal, 'abort').length, 0)
   assert.equal(f.time.tasks.size, 0)
+})
+
+test('client: authentication proof requires complete owned stdout listener evidence',async()=>{
+  const f=await fixture();let spawned
+  const handle=await f.start({onSpawned:value=>{spawned=value}});const child=f.children[0]
+  assert.equal(spawned,handle);assert.equal(handle.isAuthenticated(),false)
+  child.stderr.emit('data','SOCKS5 listening on 127.0.0.1:1080\n');assert.equal(handle.isAuthenticated(),false)
+  child.stdout.emit('data','SOCKS5 listening on 127.0.0.1:1081\n');assert.equal(handle.isAuthenticated(),false)
+  child.stdout.emit('data','SOCKS5 listening on 127.0.0.1:108');assert.equal(handle.isAuthenticated(),false)
+  child.stdout.emit('data','0');assert.equal(handle.isAuthenticated(),false)
+  child.stdout.emit('data','\n');assert.equal(handle.isAuthenticated(),true);assert.ok(handle.authenticatedAt>0)
+  child.finish();assert.equal(handle.isAuthenticated(),false);assert.equal(handle.hasExited(),true)
+})
+
+test('client: bounded stopping never pretends an unresponsive process exited',async()=>{
+  const f=await fixture({autoExit:false});const handle=await f.start()
+  const stopping=handle.stop();f.time.tick(1501);await stopping
+  assert.equal(handle.isAlive(),false);assert.equal(handle.hasExited(),false)
+  f.children[0].finish();assert.equal(handle.hasExited(),true)
+})
+
+test('client: spawned pending handle remains awaitable after connection abort',async()=>{
+  const f=await fixture({ports:[false,'hang'],autoExit:false});let spawned
+  const controller=new AbortController();const starting=f.start({signal:controller.signal,onSpawned:handle=>{spawned=handle}})
+  await flush();assert.ok(spawned);const rejected=assert.rejects(starting,{name:'AbortError'});controller.abort();await rejected
+  const stopping=spawned.stop();f.time.tick(1501);await stopping;assert.equal(spawned.hasExited(),false)
+  f.children[0].finish();assert.equal(spawned.hasExited(),true)
+})
+
+test('client: IPv6 listener argument and authentication evidence use bracketed authority',async()=>{
+  const f=await fixture();const handle=await f.start({socksHost:'::1'})
+  assert.ok(f.children[0].command.args.includes('[::1]:1080'))
+  f.children[0].stdout.emit('data','SOCKS5 listening on [::1]:1080\n');assert.equal(handle.isAuthenticated(),true)
+  await handle.stop()
 })

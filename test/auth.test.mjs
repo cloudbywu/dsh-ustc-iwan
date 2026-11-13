@@ -432,3 +432,14 @@ test('auth: close without exit rejects rather than hanging', async () => {
   await rejection
   assert.equal(f.time.tasks.size, 0)
 })
+
+test('auth: successful fetch notifies completion once and callback failure does not alter success',async()=>{
+  for(const rejected of [false,true]){
+    const f=await fixture();let calls=0
+    const {result,child}=f.start({onComplete:()=>{calls++;return rejected?Promise.reject(new Error('post operation failed')):undefined}})
+    f.authorize(child);const session=await result
+    assert.ok(f.api.submitRedirect(session.id,'com.panabit.mobile://callback?code=test').id)
+    child.exitCode=0;child.emit('exit',0,null);child.emit('close',0,null);await flush()
+    assert.equal(calls,1);assert.equal(f.api.authState().state,'done')
+  }
+})

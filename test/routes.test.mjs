@@ -6,7 +6,7 @@ import { createRouteHandler, registerRoutes } from '../lib/routes.js'
 
 const request=(path,body,method='POST')=>new Request('http://localhost/ustc-iwan/api'+path,{method,...(method==='POST'?{body:typeof body==='string'?body:JSON.stringify(body??{})}:{})})
 function runtime() {
-  return {runtime:{disposed:false},status:()=>({settings:{},iwan:{}}),applySettings:async()=>{},connect:async()=>({managed:true}),disconnect:async()=>true,beginAuth:async()=>({id:'auth-1',authorizeUrl:'https://id.example.test/authorize'}),completeAuth:()=>({id:'auth-1'}),abandonAuth:()=>({cancelled:true})}
+  return {runtime:{disposed:false},status:()=>({settings:{},iwan:{}}),applySettings:async()=>{},connect:async()=>({managed:true}),disconnect:async()=>true,installClient:async({mode})=>({started:true,mode}),inspectUpdates:async()=>({started:true,latestVersion:'v2.0'}),cancelClientInstall:async()=>({cancelled:true}),beginAuth:async()=>({id:'auth-1',authorizeUrl:'https://id.example.test/authorize'}),completeAuth:()=>({id:'auth-1'}),abandonAuth:()=>({cancelled:true})}
 }
 
 test('disconnect waits for asynchronous cleanup and returns a boolean',async()=>{
@@ -54,4 +54,15 @@ test('Node adapter accepts JSON POST bodies over a real loopback HTTP server',as
   const port=server.address().port
   const response=await fetch('http://127.0.0.1:'+port+'/ustc-iwan/api/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({listenPort:19001})})
   assert.equal(response.status,200);assert.equal((await response.json()).ok,true)
+})
+
+test('client management endpoints distinguish update, reinstall, inspect and cancel',async()=>{
+  const rt=runtime(),modes=[];rt.installClient=async({mode})=>{modes.push(mode);return {started:true}}
+  const handle=createRouteHandler(rt)
+  for(const mode of ['download','update','reinstall'])assert.equal((await handle(request('/download',{mode}))).status,200)
+  assert.deepEqual(modes,['download','update','reinstall'])
+  assert.equal((await handle(request('/download',{mode:'unknown'}))).status,400)
+  assert.equal((await handle(request('/download','null'))).status,400)
+  assert.equal((await (await handle(request('/update/check'))).json()).value.latestVersion,'v2.0')
+  assert.equal((await (await handle(request('/download/cancel'))).json()).value.cancelled,true)
 })

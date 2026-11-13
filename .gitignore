@@ -2,6 +2,7 @@
 node_modules/
 *.zip
 *.tgz
+.release/
 
 # 本地测试残留
 test-sandbox/

@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.0` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.1` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,7 +140,7 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或直接下 `Release` 里的 `dsh-ustc-iwan-0.1.0.zip` 解压，再按同样方式填入解压目录。
+或下载 [v0.1.1 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.1.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
 > 以 `link:` 链接方式安装时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**，
@@ -177,7 +177,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
    线路配置保存在 `~/.config/iwan/servers.json`；启动、等待和提交阶段均可取消。
    如需终端方式，也可自行运行 `iwan-client-oidc-windows-x86_64.exe --fetch`。
 
-4. 回到卡片点 **启动 iWAN**（或在配置里开启「托管 iWAN 客户端」）；
+4. 新配置默认启用「托管 iWAN 客户端」；下载或认证完成后自动尝试连接。已有关闭选项会保留，也可手动点 **启动 iWAN**；
 5. 用 **测试分流** 输入 `llm.ustc.edu.cn`，显示「走 iWAN」即成功。
 
 ## 设置卡片
@@ -195,6 +195,30 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`，
 以及 `/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
 关闭分流或卸载插件会清理托管进程及全部代理隧道，外部启动的进程不受影响。
+
+## 状态驱动的操作
+
+- **已下载**：根据实际校验后的缓存显示，重启后仍可识别；安装版本和时间来自本地元数据，旧缓存版本缺失时明确显示未知。
+- **检查更新 → 更新到指定版本**：只在点击时访问上游 GitHub Release API，安装已检查的精确版本；已知更高版本不自动降级，无法比较的 tag 不冒充升级。普通状态轮询不查询 GitHub。
+- **重新下载**：已知版本重下同一版本；旧缓存版本未知时才获取最新。手动客户端仅显示「已配置」，缓存操作不覆盖其他手动路径。
+- **安全替换**：暂停插件托管，等待旧进程真实退出再下载；支持取消。完成或失败后按原状态恢复；用户手动停止会保持暂停，不结束外部进程。
+- **默认托管**：仅对新配置或缺少该字段的配置启用；缺少客户端或认证配置时等待引导，不反复拉起失败进程。
+
+### 认证状态的含义
+
+上游持久化的是加密线路配置，**没有保存 token、证书或认证有效期**。因此：
+
+| 状态 | 含义 |
+| --- | --- |
+| 尚未认证 / 配置无效 | 没有可用的本地线路配置，需要完成认证或修正配置 |
+| 认证已保存，待连接验证 | 本地配置存在，但不能仅凭文件或 TCP 端口判断在线认证有效 |
+| 认证有效 | 本次插件托管的进程已完成认证并输出正确地址的 SOCKS5 监听行，且进程仍存活、配置及线路未改变 |
+
+认证有效状态会在进程退出、停止或配置变化后撤销，并不表示保存的配置立即失效；下次连接成功后再次确认。
+外部端口在线、曾经完成认证流程、文件修改时间或额外的 expiry/JWT 字段都不会被当作有效证据。
+凭据状态对象仅返回脱敏状态、数量和配置变更标识，不返回密码、密钥或完整凭据。
+
+依据：[上游配置格式](https://github.com/yyy1mu/ustc-iwan/blob/60237d88f7f1f2df4a21c79e61af392cadad4944/src/bin/oidc/config.rs)、[认证及代理启动顺序](https://github.com/yyy1mu/ustc-iwan/blob/60237d88f7f1f2df4a21c79e61af392cadad4944/src/bin/oidc/connect.rs)。
 
 ## 配置项
 
@@ -215,7 +239,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | `enabled` | `true` | 关闭后插件完全不介入（策略恢复原状） |
 | `listenPort` | `18118` | 本地分流代理端口 |
 | `iwanSocksHost` / `iwanSocksPort` | `127.0.0.1` / `1080` | iWAN SOCKS5 地址 |
-| `manageClient` | `false` | 是否由插件代启 iWAN |
+| `manageClient` | `true` | 新配置默认托管；客户端和认证配置就绪后自动连接，保留已有明确关闭选项 |
 | `iwanClientPath` | 空 | 托管模式下 exe 路径；留空用已下载副本 |
 | `iwanServer` | 空 | 线路名或序号（传给 `--server`） |
 | `upstreamProxy` | 自动 | 非 USTC 流量的上游 HTTP 代理；留空自动沿用启动环境里的 `HTTP(S)_PROXY`，再无则直连 |

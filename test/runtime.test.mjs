@@ -1,29 +1,6 @@
-import fs from 'node:fs'
-import vm from 'node:vm'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-
-const defaults = { enabled:true,listenPort:18118,iwanSocksHost:'127.0.0.1',iwanSocksPort:1080,manageClient:false,iwanClientPath:'',iwanServer:'',upstreamProxy:'',cidrs:'202.38.64.0/19',domainSuffixes:'ustc.edu.cn',dnsServer:'',verbose:false }
-const deferred = () => { let resolve; const promise=new Promise(r=>{resolve=r}); return {promise,resolve} }
-async function fixture(overrides={}, options={}) {
-  const state={ starts:[], closes:0, installs:0, restores:0, writes:[], clients:[], authCancelled:0, downloadCancelled:0 }
-  const registry={
-    './cidr.js':{makeCidrMatcher:()=>ip=>ip==='202.38.64.1'?'202.38.64.0/19':null},
-    './resolver.js':{createResolver:()=>async host=>({ips:host==='campus.test'?['202.38.64.1']:[],fake:false})},
-    './split-proxy.js':{startSplitProxy:async opts=>{state.starts.push(opts);return {close(){state.closes++}}}},
-    './iwan-client.js':{ensureIwanClient:async opts=>{state.clients.push(opts);return {managed:true,stop(){},isAlive:()=>true}},DEFAULT_IWAN_DNS:'202.38.64.1'},
-    './policy.js':{installSplitPolicy:async()=>{state.installs++;return ()=>{state.restores++}}},
-    './binary.js':{resolveBinary:()=>({path:'mock.exe'}),downloadState:()=>({}),cancelDownload:()=>{state.downloadCancelled++}},
-    './auth.js':{startAuth:()=>{},submitRedirect:()=>{},cancelAuth:()=>{},authState:()=>({}),waitForAuthCleanup:async()=>{},cancelAllAuth:()=>{state.authCancelled++}},
-    './settings-store.js':{readSettings:()=>({...defaults}),writeSettings:s=>state.writes.push(s)},
-    './defaults.js':{DEFAULT_CIDRS:defaults.cidrs},
-  }
-  for(const [spec, values] of Object.entries(overrides)) Object.assign(registry[spec],values)
-  const mod=new vm.SourceTextModule(fs.readFileSync(new URL('../lib/runtime.js',import.meta.url),'utf8'),{context:vm.createContext({AbortController,console})})
-  await mod.link(async spec=>{const values=registry[spec];return new vm.SyntheticModule(Object.keys(values),function(){for(const [key,value] of Object.entries(values))this.setExport(key,value)},{context:mod.context})})
-  await mod.evaluate()
-  return {rt:mod.namespace.createRuntime(options),state}
-}
+import { fixture, deferred } from './helpers/runtime-fixture.mjs'
 
 test('SOCKS endpoint and verbose changes rebuild the active proxy',async()=>{
   const {rt,state}=await fixture(); await rt.init()
