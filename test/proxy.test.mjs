@@ -90,7 +90,7 @@ test('HTTP direct origin-form, POST body and iWAN fallback', { timeout: 4000 }, 
     let body = ''; req.on('data', chunk => { body += chunk }); req.on('end', () => res.end(`${req.url}|${body}`))
   }))
   const dead = await listen(t, net.createServer(socket => socket.destroy()))
-  const p = await proxy(t, { decide: () => ({ kind: 'iwan' }), iwan: { proxyPort: dead.port } })
+  const p = await proxy(t, { socksRetryWindowMs: 50, decide: () => ({ kind: 'iwan' }), iwan: { proxyPort: dead.port } })
   const response = await request(p.port, '/local?query=yes', { method: 'POST', headers: { host: `127.0.0.1:${origin.port}` }, body: 'posted' })
   assert.equal(response.status, 200); assert.equal(response.body, '/local?query=yes|posted')
   for (const path of ['https://127.0.0.1/', 'ftp://127.0.0.1/', 'not-a-url']) assert.equal((await request(p.port, path)).status, 400)

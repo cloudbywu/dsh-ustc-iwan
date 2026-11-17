@@ -425,3 +425,150 @@ test('client: IPv6 listener argument and authentication evidence use bracketed a
   f.children[0].stdout.emit('data','SOCKS5 listening on [::1]:1080\n');assert.equal(handle.isAuthenticated(),true)
   await handle.stop()
 })
+
+const reconnectLine = (n = 1, m = 5) => 'connection ended: send VPN packet; reconnecting (' + n + '/' + m + ')...\n'
+const listenerLine = 'SOCKS5 listening on 127.0.0.1:1080\n'
+
+test('client: native attempts preserve first deadline and ignore repeated progress', async () => {
+  let time = 0
+  const f = await fixture()
+  const handle = await f.start({ now: () => time })
+  const child = f.children[0]
+  child.stdout.emit('data', reconnectLine())
+  time = 1000
+  child.stderr.emit('data', reconnectLine(2))
+  assert.equal(handle.reconnectState().since, 0)
+  assert.equal(handle.reconnectState().lastAttemptAt, 1000)
+  time = 2000
+  child.stderr.emit('data', 'unrelated\n')
+  child.stdout.emit('data', reconnectLine(2) + reconnectLine(1))
+  assert.equal(handle.reconnectState().lastAttemptAt, 1000)
+  assert.equal(handle.reconnectState().attempt, 2)
+  time = 3000
+  child.stdout.emit('data', reconnectLine(3))
+  assert.equal(handle.reconnectState().since, 0)
+  assert.equal(handle.reconnectState().lastAttemptAt, 3000)
+  child.stdout.emit('data', listenerLine)
+  time = 4000
+  child.stderr.emit('data', reconnectLine(4))
+  assert.equal(handle.reconnectState().since, 4000)
+  child.finish(1)
+  assert.equal(handle.isReconnecting(), false)
+  assert.equal(handle.reconnectState(), null)
+  assert.equal(handle.authenticatedAt, null)
+  child.stdout.emit('data', listenerLine + reconnectLine())
+  assert.equal(handle.isAuthenticated(), false)
+  assert.equal(handle.reconnectState(), null)
+})
+
+test('client: giant complete and fragmented lines cannot fabricate state evidence', async () => {
+  const f = await fixture()
+  const handle = await f.start()
+  const child = f.children[0]
+  child.stderr.emit('data', 'x'.repeat(100000) + reconnectLine())
+  child.stdout.emit('data', 'x'.repeat(5000))
+  child.stdout.emit('data', listenerLine)
+  child.stderr.emit('data', 'x'.repeat(4097))
+  child.stderr.emit('data', reconnectLine())
+  assert.equal(handle.isReconnecting(), false)
+  assert.equal(handle.isAuthenticated(), false)
+  child.stdout.emit('data', listenerLine)
+  assert.equal(handle.isAuthenticated(), true)
+  child.stderr.emit('data', reconnectLine())
+  child.stdout.emit('data', 'x'.repeat(100000) + listenerLine)
+  assert.equal(handle.isReconnecting(), true)
+  child.stdout.emit('data', listenerLine)
+  assert.equal(handle.isAuthenticated(), true)
+  await handle.stop()
+  assert.equal(handle.isReconnecting(), false)
+  assert.equal(handle.reconnectState(), null)
+})
+
+test('client: invalid and incomplete native lines are not state evidence', async () => {
+  const f = await fixture()
+  const handle = await f.start()
+  const child = f.children[0]
+  for (const line of [reconnectLine(0), reconnectLine(5), reconnectLine(6), reconnectLine(1, 0), reconnectLine().trimEnd() + 'suffix\n', 'prefix ' + reconnectLine()]) child.stderr.emit('data', line)
+  assert.equal(handle.isReconnecting(), false)
+  child.stderr.emit('data', reconnectLine().slice(0, -1))
+  child.finish(1)
+  assert.equal(handle.reconnectState(), null)
+})
+
+test('client: default selection is explicit and native retries need no stdin reset', async () => {
+  for (const options of [{}, { server: 'chosen' }, { server: 'auto' }, { extraArgs: ['--auto'] }, { extraArgs: ['--server', '3'] }, { extraArgs: ['--server=2'] }]) {
+    const f = await fixture()
+    const handle = await f.start(options)
+    const child = f.children[0]
+    const args = child.command.args
+    if (options.server) assert.equal(args[args.indexOf('--server') + 1], options.server)
+    else if (!options.extraArgs) assert.equal(args[args.indexOf('--server') + 1], '1')
+    else {
+      for (const arg of options.extraArgs) assert.ok(args.includes(arg))
+      assert.equal(args.filter(arg => arg === '--server').length, options.extraArgs.includes('--server') ? 1 : 0)
+    }
+    child.stderr.emit('data', reconnectLine())
+    child.stdout.emit('data', listenerLine)
+    child.stderr.emit('data', reconnectLine(2))
+    child.stdout.emit('data', listenerLine)
+    assert.equal(child.writes.length, 0)
+    assert.equal(handle.isAuthenticated(), true)
+    await handle.stop()
+  }
+})
+
+test('client: stop interrupts native reconnect and clears all public progress evidence', async () => {
+  const f = await fixture()
+  const handle = await f.start()
+  const child = f.children[0]
+  child.stderr.emit('data', reconnectLine())
+  assert.equal(handle.isReconnecting(), true)
+  assert.deepEqual(Object.keys(handle.reconnectState()).sort(), ['attempt', 'lastAttemptAt', 'maxAttempts', 'since'])
+  await handle.stop()
+  assert.equal(handle.isAlive(), false)
+  assert.equal(handle.isReconnecting(), false)
+  assert.equal(handle.reconnectState(), null)
+  assert.equal(handle.isAuthenticated(), false)
+  assert.equal(child.kills.length, 1)
+  assert.equal(f.time.tasks.size, 0)
+})
+
+test('client: native reconnect consumes fresh fragmented lines and invalidates old proof', async () => {
+  let time = 100
+  const f = await fixture()
+  const handle = await f.start({ now: () => time })
+  const child = f.children[0]
+  child.stdout.emit('data', listenerLine)
+  assert.equal(handle.authenticatedAt, 100)
+  const line = reconnectLine()
+  child.stderr.emit('data', line.slice(0, 30))
+  child.stdout.emit('data', 'unrelated\n')
+  assert.equal(handle.isReconnecting(), false)
+  child.stderr.emit('data', line.slice(30, -1))
+  assert.equal(handle.isAuthenticated(), true)
+  time = 200
+  child.stderr.emit('data', '\r\n')
+  assert.equal(handle.isAlive(), true)
+  assert.equal(handle.isReconnecting(), true)
+  assert.equal(handle.isAuthenticated(), false)
+  assert.equal(handle.authenticatedAt, null)
+  assert.equal(JSON.stringify(handle.reconnectState()), JSON.stringify({ since: 200, lastAttemptAt: 200, attempt: 1, maxAttempts: 5 }))
+  const copy = handle.reconnectState(); copy.since = -1
+  assert.equal(handle.reconnectState().since, 200)
+  child.stdout.emit('data', 'ordinary log\n')
+  child.stderr.emit('data', listenerLine)
+  child.stdout.emit('data', listenerLine.replace(':1080', ':1081'))
+  child.stdout.emit('data', listenerLine.replace('127.0.0.1', '127.0.0.2'))
+  assert.equal(handle.isReconnecting(), true)
+  time = 500
+  child.stdout.emit('data', listenerLine.slice(0, -1))
+  assert.equal(handle.isAuthenticated(), false)
+  child.stdout.emit('data', '\n')
+  assert.equal(handle.isReconnecting(), false)
+  assert.equal(handle.reconnectState(), null)
+  assert.equal(handle.isAuthenticated(), true)
+  assert.equal(handle.authenticatedAt, 500)
+  child.stderr.emit('data', 'next status\n')
+  assert.equal(handle.isReconnecting(), false)
+  await handle.stop()
+})

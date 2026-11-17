@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.1` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.2` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,7 +140,7 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或下载 [v0.1.1 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.1.zip) 解压，再按同样方式填入解压目录。
+或下载 [v0.1.2 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.2.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
 > 以 `link:` 链接方式安装时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**，
@@ -186,14 +186,14 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 | 分组 | 内容 |
 | --- | --- |
-| 运行状态 | 分流代理 / 出站策略 / iWAN SOCKS5 / 托管进程 四个指示灯；启动 iWAN、停止托管、刷新状态、**分流测试** |
+| 运行状态 | 分流代理 / 出站策略 / iWAN SOCKS5 / 托管进程 指示灯；启动、重新连接、停止托管、恢复进度、刷新状态和分流测试 |
 | 统一身份认证 | 应用内授权、提交回调、全阶段取消与结果状态 |
 | iWAN 客户端 | **一键下载 iwan-client-oidc**（进度条、sha256 记录、失败自动清理） |
 | 配置 | SOCKS 地址、端口和日志开关热更新；轮询保留未保存草稿，支持显式放弃修改 |
 | 最近日志 | 最近 40 条运行日志 |
 
 宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`，
-以及 `/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
+以及 `/ustc-iwan/api/reconnect`、`/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
 关闭分流或卸载插件会清理托管进程及全部代理隧道，外部启动的进程不受影响。
 
 ## 状态驱动的操作
@@ -203,6 +203,24 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 - **重新下载**：已知版本重下同一版本；旧缓存版本未知时才获取最新。手动客户端仅显示「已配置」，缓存操作不覆盖其他手动路径。
 - **安全替换**：暂停插件托管，等待旧进程真实退出再下载；支持取消。完成或失败后按原状态恢复；用户手动停止会保持暂停，不结束外部进程。
 - **默认托管**：仅对新配置或缺少该字段的配置启用；缺少客户端或认证配置时等待引导，不反复拉起失败进程。
+
+### 休眠、网络恢复与重新连接
+
+- 设置卡片在窗口重新获得焦点、页面重新可见或浏览器恢复联网时立即刷新；旧响应不覆盖新状态及未保存草稿，请求有 30 秒超时。
+- 启用自动托管后，后台每 10 秒检查本地 SOCKS 端口；普通端口异常连续两次才重建托管连接。
+- 检测到 30 秒以上的事件循环长暂停（如系统休眠）时，先留 5 秒网络恢复宽限，再重新建立自己的托管会话，避免旧监听仍开但休眠前会话已经失效。
+- 重连失败按 10 / 20 / 40 / 60 秒退避，连续 5 次失败后暂停自动尝试，提示人工检查；可点「重新连接」明确重试。
+- 「停止托管」、关闭自动托管/分流、下载维护或认证期间不会被后台抢先拉起；外部启动的进程不会被结束或自动重启。
+- 唤醒后撤销旧认证会话证明，并清除旧 DNS 解析缓存；新托管连接完成真实认证后才重新显示有效。本地 SOCKS 端口在线不等于远端目标站全链路可达。
+
+### 瞬时 connect error 与客户端内部重连
+
+- 托管默认显式使用 `--server 1`，等价于原先空线路选择第一条；避免上游每次内部重连再次等待交互选线。显式线路或 `auto` 不被改写。
+- `connection ended: ...; reconnecting (...)` 表示原生会话中断，此时进程存活不代表 SOCKS 监听和认证仍有效。卡片显示客户端重连中，直到新的正确监听行出现才恢复认证证明。
+- 插件优先等原生客户端自行恢复：单轮无新进度最多 30 秒、一次断线总计最多 90 秒；超时或进程退出才由监测器接管，手动停止/重连仍可立即打断。
+- 仅对明确回环地址的本地 SOCKS 建立期传输错误，最多等待 3 秒、最多尝试 7 次，再按既有策略回退直连；路由、所有尝试和回退共用同一总时限。认证拒绝、坏协议、目标错误和握手超时不泛重试。
+- 上述等待发生在 CONNECT 200 和 HTTP 业务字节发送前；一旦隧道已交接，不自动重放模型 POST、已建立隧道或响应流，避免增加重复执行/计费风险。宿主自身的模型请求重试是独立机制。
+- `send VPN packet` 是上游隧道 UDP 发送错误的外层上下文，不足以定位 Windows errno。上述修复避免选线挂起、两套重连相互打断和短闪断过早回退，不等于已根治所有底层网络错误。
 
 ### 认证状态的含义
 
@@ -253,8 +271,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 - **Clash TUN 开着也能用**：分流在应用进程内完成；Clash 接管 DNS 出现 fake-ip 时，
   插件改用域名后缀兜底，且转发给 iWAN 的是域名（由 iWAN 在校内解析）。
   建议在 Clash 配置里把 iWAN 服务器地址与上述 USTC 网段设为 `DIRECT` 更稳。
-- **iWAN 隧道不被抢走**：ustc-iwan 客户端本身把隧道 UDP 绑定到物理网卡
-  （排除 VPN/TUN 虚拟网卡）。
+- **iWAN 隧道与 TUN**：客户端优先选择物理接口，但 Windows 上绑定源 IPv4 不等于强制绕过 TUN 路由；建议把实际 iWAN 服务器地址设置为 `DIRECT`（含 UDP）。网卡变化或路由环路需要用底层错误链另行核实，不能仅凭外层 `send VPN packet` 断言。
 - **WireGuard / Panabit iWAN**：它们接管系统路由不影响应用层分流，插件不与之争抢
   任何系统资源。
 - **iWAN 掉线**：USTC 请求自动回退直连（校内场景仍可用），并在日志中提示。
@@ -268,6 +285,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | iWAN 客户端一启动就退出 | 先在终端单独跑 `--connect --socks` 看输出；多为线路选择或认证过期，重跑 `--fetch` |
 | USTC 请求走了直连且校外不可达 | 确认 iWAN SOCKS 端口存活；看日志是否提示 fake-ip，必要时设 DNS 为 `223.5.5.5` |
 | 下载失败 | 走 GitHub Releases，网络不畅时手动下载并填入「客户端路径」 |
+| 休眠后离线 | 自动托管会在宽限和退避后恢复；检查恢复提示，必要时点「重新连接」。手动暂停或外部客户端不会被自动拉起 |
 
 ## 已知边界
 
@@ -299,6 +317,7 @@ lib/socks.js          极简 SOCKS5 CONNECT 客户端
 lib/cidr.js           USTC 网段匹配 + fake-ip 识别
 lib/resolver.js       带缓存 DNS 解析
 lib/iwan-client.js    iWAN 客户端探测/托管
+lib/reconnect-monitor.js 休眠心跳、健康检查与重试退避
 lib/binary.js         iWAN 客户端下载
 lib/policy.js         出站策略安装/恢复
 lib/settings-store.js 设置持久化

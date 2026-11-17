@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import { once } from 'node:events'
-import { socksConnect } from '../lib/socks.js'
+import { socksConnect, SocksConnectError } from '../lib/socks.js'
 
 async function listen(t, handler) {
   const sockets = new Set()
@@ -111,4 +111,61 @@ test('SOCKS EOF, reset, timeout, cancellation and validation settle without leak
     if (peer && !peer.destroyed) await once(peer, 'close')
   }
   for (const options of [{ targetHost: 'x', targetPort: 0 }, { targetHost: 'x'.repeat(256), targetPort: 80 }, { targetHost: '', targetPort: 80 }]) await assert.rejects(socksConnect(options))
+})
+
+test('SOCKS establishment errors expose phase/retryable and preserve transport codes', { timeout: 4000 }, async t => {
+  const reserve = net.createServer()
+  reserve.listen(0, '127.0.0.1'); await once(reserve, 'listening')
+  const refused = reserve.address().port; await new Promise(resolve => reserve.close(resolve))
+  await assert.rejects(socksConnect({ proxyPort: refused, targetHost: 'localhost', targetPort: 80 }), error => {
+    assert.ok(error instanceof SocksConnectError); assert.equal(error.phase, 'connect')
+    assert.equal(error.retryable, true); assert.equal(error.code, 'ECONNREFUSED'); return true
+  })
+  for (const mode of ['eof', 'partial', 'reset', 'timeout', 'abort', 'reply-eof']) {
+    let ready
+    const received = new Promise(resolve => { ready = resolve })
+    const port = await listen(t, socket => socket.once('data', () => {
+      ready()
+      if (mode === 'eof') socket.end()
+      if (mode === 'partial') socket.end(Buffer.from([5]))
+      if (mode === 'reset') socket.resetAndDestroy()
+      if (mode === 'reply-eof') {
+        socket.once('data', () => socket.end(Buffer.from([5, 0, 0, 1])))
+        socket.write(Buffer.from([5, 0]))
+      }
+    }))
+    const controller = new AbortController()
+    const pending = socksConnect({ proxyPort: port, targetHost: 'localhost', targetPort: 80, timeoutMs: 100, signal: controller.signal })
+    const checked = assert.rejects(pending, error => {
+      assert.ok(error instanceof SocksConnectError)
+      assert.equal(error.phase, mode === 'abort' ? 'abort' : mode === 'reply-eof' ? 'reply' : 'greeting')
+      assert.equal(error.retryable, !['timeout', 'abort'].includes(mode))
+      if (mode === 'reset') assert.equal(error.code, 'ECONNRESET')
+      return true
+    })
+    await received
+    if (mode === 'abort') controller.abort(new Error('cancelled'))
+    await checked
+  }
+  await assert.rejects(socksConnect({ targetHost: '', targetPort: 80 }), error => {
+    assert.equal(error.phase, 'validation'); assert.equal(error.retryable, false); return true
+  })
+})
+
+test('known invalid SOCKS prefixes are terminal even without EOF or complete frames', { timeout: 4000 }, async t => {
+  for (const [phase, response] of [
+    ['greeting', [4]], ['greeting', [5, 255]],
+    ['reply', [4]], ['reply', [5, 2]], ['reply', [5, 0, 1]],
+    ['reply', [5, 0, 0, 9]], ['reply', [5, 0, 0, 3, 0]],
+  ]) {
+    const port = await listen(t, socket => socket.once('data', () => {
+      if (phase === 'greeting') return socket.write(Buffer.from(response))
+      socket.once('data', () => socket.write(Buffer.from(response)))
+      socket.write(Buffer.from([5, 0]))
+    }))
+    await assert.rejects(socksConnect({ proxyPort: port, targetHost: 'localhost', targetPort: 80, timeoutMs: 300 }), error => {
+      assert.equal(error.phase, phase); assert.equal(error.retryable, false)
+      assert.doesNotMatch(error.message, /超时/); return true
+    })
+  }
 })

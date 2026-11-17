@@ -66,3 +66,23 @@ test('client management endpoints distinguish update, reinstall, inspect and can
   assert.equal((await (await handle(request('/update/check'))).json()).value.latestVersion,'v2.0')
   assert.equal((await (await handle(request('/download/cancel'))).json()).value.cancelled,true)
 })
+
+test('explicit reconnect endpoint awaits fresh managed connection',async()=>{
+  const rt=runtime();let calls=0
+  rt.reconnect=async()=>{calls++;return {managed:true}}
+  const response=await createRouteHandler(rt)(request('/reconnect'))
+  assert.equal(response.status,200);assert.equal((await response.json()).value.managed,true);assert.equal(calls,1)
+})
+
+test('status returns latest lifecycle snapshot after the async port probe',async()=>{
+  const rt=runtime();let calls=0;const status=rt.status
+  rt.status=()=>{const value=status();value.settings={iwanSocksPort:1,iwanSocksHost:'127.0.0.1'};value.iwan.managed=++calls>1;return value}
+  const response=await createRouteHandler(rt)(request('/status',undefined,'GET'))
+  assert.equal((await response.json()).value.iwan.managed,true);assert.equal(calls,2)
+})
+
+test('status reports stopped runtime if disposal occurred during port probing',async()=>{
+  const rt=runtime();rt.runtime={disposed:false};const status=rt.status
+  rt.status=()=>{queueMicrotask(()=>{rt.runtime.disposed=true});const value=status();value.settings={iwanSocksPort:1,iwanSocksHost:'127.0.0.1'};return value}
+  assert.equal((await createRouteHandler(rt)(request('/status',undefined,'GET'))).status,503)
+})
