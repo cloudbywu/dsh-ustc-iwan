@@ -4,7 +4,7 @@ import vm from 'node:vm'
 export const initial = () => ({settings:{enabled:true,listenPort:18118,iwanSocksHost:'127.0.0.1',iwanSocksPort:1080,manageClient:false,iwanClientPath:'',iwanServer:'',upstreamProxy:'',cidrs:'',domainSuffixes:'ustc.edu.cn',dnsServer:'',verbose:false},proxy:{listening:true,port:18118},policyInstalled:true,iwan:{socksAlive:false,managed:false},binary:{path:'mock.exe',kind:'downloaded',installed:true,downloaded:true,version:'v1.0',checking:false,latestVersion:null,updateAvailable:null},download:{state:'idle'},auth:{state:'idle',credentials:{state:'unknown',serverCount:1,revision:'saved'}},log:[]})
 export const tick = () => new Promise(setImmediate)
 export const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
-export function fixture() {
+export function fixture(options = {}) {
   let exported,Component,cursor=0,pending=[],tree,server=initial(),fetchOverride=null
   let timerId=0,now=0,mounted=true,staleUpdates=0
   const requests=[];const hooks=[],intervals=new Map(),timeouts=new Map()
@@ -23,7 +23,7 @@ export function fixture() {
     useEffect(fn,deps){const i=cursor++;if(!hooks[i]||!same(hooks[i].deps,deps)){hooks[i]?.cleanup?.();pending.push(()=>{hooks[i]={deps,cleanup:fn()}})}},
   }
   const response=value=>({ok:true,status:200,text:async()=>JSON.stringify({ok:true,value})})
-  const ctx={window:{...eventTarget('window'),__ModuleLoader__:{load:entry=>{exported=entry.factory(()=>React)}}},document:{...eventTarget('document'),visibilityState:'visible',getElementById:()=>true},console,AbortController,
+  const ctx={window:{...eventTarget('window'),__ModuleLoader__:{load:entry=>{exported=entry.factory(()=>React)}}},document:{...eventTarget('document'),visibilityState:'visible',getElementById:()=>true},navigator:options.navigator,console,AbortController,
     fetch:async(url,init)=>{requests.push({url,init});if(fetchOverride){const handled=fetchOverride(url,init);if(handled)return handled}if(url.endsWith('/settings'))server={...server,settings:JSON.parse(init.body)};if(url.endsWith('/download'))return response({started:true});if(url.endsWith('/update/check'))return response({started:true,...server.binary});return response(server)},
     setInterval:(fn,ms)=>{intervals.set(++timerId,{fn,ms});return timerId},clearInterval:id=>intervals.delete(id),
     setTimeout:(fn,ms)=>{timeouts.set(++timerId,{fn,at:now+ms});return timerId},clearTimeout:id=>timeouts.delete(id),

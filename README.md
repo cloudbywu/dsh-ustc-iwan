@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.2` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.3` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,7 +140,7 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或下载 [v0.1.2 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.2.zip) 解压，再按同样方式填入解压目录。
+或下载 [v0.1.3 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.3.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
 > 以 `link:` 链接方式安装时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**，
@@ -182,7 +182,9 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 ## 设置卡片
 
-安装后 **设置 → USTC iWAN** 出现一张卡片，包含以下分组：
+安装后 **设置 → USTC iWAN** 出现一张卡片。首次使用按「准备客户端 → 统一身份认证 → 启动并验证分流」展示三步指引，就绪后可收起。外部客户端模式与实时端口状态分别判断；「走 iWAN」只代表规则命中，不等于真实目标可达。
+
+卡片包含以下分组：
 
 | 分组 | 内容 |
 | --- | --- |
