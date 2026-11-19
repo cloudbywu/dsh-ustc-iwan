@@ -6,10 +6,10 @@
 
 让**词元工坊**（DSH / DeepSeek Harness）访问 **USTC 系列模型（如 llm.ustc.edu.cn）与科大系列网站**
 时自动走 [ustc-iwan](https://github.com/yyy1mu/ustc-iwan)，其余流量保持原样；
-与 **Clash TUN、WireGuard、Panabit iWAN** 等代理/隧道软件**共存不冲突**。
+可与 **Clash TUN、WireGuard、Panabit iWAN** 等代理/隧道软件配合；如果 TUN 切换影响 iWAN，参见 [Clash Verge TUN 配置指南](docs/clash/README.md)。
 
 - 不改系统路由、不创建虚拟网卡、不改注册表——分流完全在应用进程内完成。
-- 零第三方依赖：只需宿主自带的 `@deepseek-ai/dsh-http-proxy`（不可用时自动降级）。
+- 使用宿主的 `@deepseek-ai/dsh-http-proxy`（不可用时自动降级）；仅 Clash TUN 配置功能额外依赖 YAML 解析器。
 - 带完整设置界面：状态指示灯、一键下载 iWAN 客户端、配置表单、分流测试、运行日志。
 
 ## 快速安装
@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.4` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.5` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,11 +140,10 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或下载 [v0.1.4 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.4.zip) 解压，再按同样方式填入解压目录。
+或下载 [v0.1.5 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.5.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
-> 以 `link:` 链接方式安装时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**，
-> 链接安装同样可用；这种方式改代码后重启应用即生效。
+> `link:` 不会安装依赖。链接或从源码目录安装前，请先在项目目录运行 `npm ci --ignore-scripts --omit=peer`；改代码后重启应用生效。
 
 ### 方式四：直接写进 profile（CLI / 进阶）
 
@@ -192,10 +191,11 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | 统一身份认证 | 应用内授权、提交回调、全阶段取消与结果状态 |
 | iWAN 客户端 | **一键下载 iwan-client-oidc**（进度条、sha256 记录、失败自动清理） |
 | 配置 | SOCKS 地址、端口和日志开关热更新；轮询保留未保存草稿，支持显式放弃修改 |
+| Clash TUN 共存设置 | 检测 Clash Verge Rev、预览排除项、备份写入和撤销；见 [Clash TUN 配置指南](docs/clash/README.md#插件内检测和配置windows-clash-verge-rev) |
 | 最近日志 | 最近 40 条运行日志，可复制 |
 
 宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`，
-以及 `/ustc-iwan/api/{reconnect,download/cancel,update/check}`、`/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
+以及 `/ustc-iwan/api/{reconnect,download/cancel,update/check}`、`/ustc-iwan/api/auth/{start,complete,cancel}`。`/ustc-iwan/api/clash-tun` 及其 `/apply`、`/rollback` 仅供本机直连设置卡片调用。停止托管可取消正在启动的进程；
 关闭分流或卸载插件会清理托管进程及全部代理隧道，外部启动的进程不受影响。
 
 ## 状态驱动的操作
@@ -274,10 +274,8 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 ## 与代理软件共存
 
-- **Clash TUN 开着也能用**：分流在应用进程内完成；Clash 接管 DNS 出现 fake-ip 时，
-  插件改用域名后缀兜底，且转发给 iWAN 的是域名（由 iWAN 在校内解析）。
-  建议在 Clash 配置里把 iWAN 服务器地址与上述 USTC 网段设为 `DIRECT` 更稳。
-- **iWAN 隧道与 TUN**：客户端优先选择物理接口，但 Windows 上绑定源 IPv4 不等于强制绕过 TUN 路由；建议把实际 iWAN 服务器地址设置为 `DIRECT`（含 UDP）。网卡变化或路由环路需要用底层错误链另行核实，不能仅凭外层 `send VPN packet` 断言。
+- **Clash Verge / Mihomo TUN**：先只把当前 **iWAN 线路服务器 IP** 加入 TUN 路由排除；「排除全部 USTC 网段」只用于明确需要绕过 Clash 的场景。仅使用词元工坊时，保留插件分流即可；如果浏览器等其它应用也要走 iWAN，可在 Clash 添加 SOCKS5 出站及 USTC 规则。详见 [配置指南](docs/clash/README.md) 和 [USTC 规则文件](docs/clash/iwan.yaml)。
+- **fake-IP**：Clash 接管 DNS 时，插件可按域名后缀判断分流，并把域名交给 iWAN 解析。Windows 上绑定物理接口的源地址不等于强制绕过 TUN；仅添加 `DIRECT` 规则也不等于排除系统路由。
 - **WireGuard / Panabit iWAN**：它们接管系统路由不影响应用层分流，插件不与之争抢
   任何系统资源。
 - **iWAN 掉线**：USTC 请求自动回退直连（校内场景仍可用），并在日志中提示。
@@ -290,6 +288,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | SOCKS5 离线且没有客户端 | 下载或配置客户端；如使用外部 iWAN，请关闭托管、填写实际监听地址并启动它 |
 | iWAN 客户端一启动就退出 | 先在终端单独跑 `--connect --socks` 看输出；多为线路选择或认证过期，重跑 `--fetch` |
 | USTC 请求走了直连且校外不可达 | 确认 iWAN SOCKS 端口存活；看日志是否提示 fake-ip，必要时设 DNS 为 `223.5.5.5` |
+| 仅开启 Clash Verge TUN 时出现 `Connection error` | 保持 iWAN 进程不变，先用 TUN 开关做对照，再核对 [当前线路 IP 的 TUN 排除配置](docs/clash/README.md#第一步让-iwan-线路服务器绕过-tun) |
 | 下载失败 | 走 GitHub Releases，网络不畅时手动下载并填入「客户端路径」 |
 | 休眠后离线 | 自动托管会在宽限和退避后恢复；检查恢复提示，必要时点「重新连接」。手动暂停或外部客户端不会被自动拉起 |
 | 宿主更新已下载但未完成安装 | 若旧版插件可能影响退出，可先停用插件，结束运行中的任务，完全退出宿主后再更新。若停用后仍失败，请记录宿主版本和更新退出日志 |
@@ -305,9 +304,10 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 ## 开发
 
-使用 Node.js 24.9.0 或更新版本，无需安装额外测试依赖：
+使用 Node.js 24.9.0 或更新版本：
 
 ```sh
+npm ci --ignore-scripts --omit=peer
 npm run check
 npm test
 ```
@@ -328,6 +328,9 @@ lib/reconnect-monitor.js 休眠心跳、健康检查与重试退避
 lib/binary.js         iWAN 客户端下载
 lib/auth.js           应用内统一身份认证
 lib/credentials.js    线路配置的脱敏检查
+lib/clash-tun.js      Clash TUN 检测、加密备份和安全回退
+lib/clash-yaml.js     TUN 排除项的 YAML 检测与局部追加
+docs/clash/           Clash TUN 配置指南和 USTC 规则集
 lib/defaults.js       默认端口与分流规则
 lib/home.js           插件数据目录定位
 lib/owned-process.js  托管子进程退出保护

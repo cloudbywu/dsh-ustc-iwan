@@ -1,6 +1,6 @@
 # 发布到 npm 指南
 
-当前包名：**`@cloudbywu/dsh-ustc-iwan`**，版本：`0.1.4`。
+当前包名：**`@cloudbywu/dsh-ustc-iwan`**，版本：`0.1.5`。
 旧的无作用域包 `dsh-ustc-iwan` 已撤销；scoped 包的 npm 发布由维护者手动管理。
 以下流程用于后续发版和验收，不要重复上传已发布的同一版本。
 本文中的登录、发布和注册表验证命令由维护者自行执行。
@@ -66,7 +66,7 @@ npm publish --access public --registry=https://registry.npmjs.org/
 ```
 
 `publishConfig.access` 已设为 `public`；命令显式指定以便检查 scoped 包的公开发布意图。
-预期成功输出为 `+ @cloudbywu/dsh-ustc-iwan@0.1.4`（以实际版本为准）。
+预期成功输出为 `+ @cloudbywu/dsh-ustc-iwan@0.1.5`（以实际版本为准）。
 旧包与 scoped 包是不同的 npm 包；撤回或更名不意味着已发布版本可以覆盖。
 
 ## 4. 发布后验收

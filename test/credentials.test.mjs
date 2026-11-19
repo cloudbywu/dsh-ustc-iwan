@@ -5,7 +5,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import childProcess from 'node:child_process'
 import { syncBuiltinESMExports } from 'node:module'
-import { readCredentialStatus } from '../lib/credentials.js'
+import { readCredentialRelayIps, readCredentialStatus } from '../lib/credentials.js'
 
 // Every credential below is synthetic. No real user config is opened.
 const cipher = Buffer.alloc(40, 0xa5).toString('base64url')
@@ -22,6 +22,16 @@ function redacted(status, secrets = []) {
   assert.equal(status.expiresAt, null)
   for (const value of secrets) assert.ok(!JSON.stringify(status).includes(value), 'status must not contain sensitive input')
 }
+
+test('TUN relay lookup returns only literal IPs and never exposes credentials', t => {
+  const f = fixture(t), options = { configDir: f.dir }
+  assert.deepEqual(readCredentialRelayIps(options), [])
+  f.write(config([server(), server(), server({ host: '2001:DB8::1' }),
+    server({ host: 'relay.example.test' }), server({ host: 'fe80::1%5' }), null]))
+  assert.deepEqual(readCredentialRelayIps(options), ['192.0.2.1', '2001:db8::1'])
+  fs.writeFileSync(f.file, 'bad JSON')
+  assert.deepEqual(readCredentialRelayIps(options), [])
+})
 
 test('missing file and empty server list report missing, without leaking paths', t => {
   const f = fixture(t)
