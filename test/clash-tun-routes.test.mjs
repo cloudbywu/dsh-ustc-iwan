@@ -60,6 +60,71 @@ test('Clash TUN accepts a fresh preview and narrow mutation shape and never expo
   assert.doesNotMatch(await failed.text(), /private-yaml-data/)
 })
 
+test('desktop-transformed requests require both the gateway shape and a verified host session', async () => {
+  const {handler, actions} = fixture()
+  let verifications = 0
+  const authenticated = { ...transport, verifyHostSession() { verifications++; return true } }
+  const desktop = (suffix = '', body, headers = {}) => new Request(base + root + suffix, {
+    ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
+    headers: { host: new URL(base).host, 'x-ustc-iwan-tun': '1', 'x-ustc-iwan-desktop': '1',
+      ...(body === undefined ? {} : { 'content-type':'application/json' }), ...headers },
+  })
+  for (const [req, conn] of [
+    [desktop(), transport],
+    [desktop('', undefined, { cookie:'dsh-auth-fake=looks-valid' }), { ...transport, verifyHostSession: () => false }],
+    [desktop(), { ...transport, verifyHostSession() { throw new Error('private failure') } }],
+    [desktop(), { ...authenticated, remoteAddress:'192.0.2.2' }],
+    [desktop('', undefined, { host:'127.0.0.1:9999' }), authenticated],
+    [desktop('', undefined, { referer:'dsh-app://app.evil.invalid/' }), authenticated],
+    [desktop('', undefined, { 'x-ustc-iwan-desktop':'0' }), authenticated],
+    [desktop('/apply', {mode:'relay',revision:'r0'}, { origin:'https://evil.invalid' }), authenticated],
+    [desktop('/rollback', {revision:'r0'}, { 'sec-fetch-site':'cross-site' }), authenticated],
+  ]) assert.equal((await handler(req, conn)).status, 403)
+  assert.deepEqual(actions, []); assert.equal(verifications, 0)
+  assert.equal((await handler(desktop('', undefined, {referer:'dsh-app://app/settings'}), authenticated)).status, 200)
+  assert.equal((await handler(desktop('/apply', {mode:'relay',revision:'r0'}), authenticated)).status, 200)
+  assert.equal((await handler(desktop('/rollback', {revision:'r0'}), authenticated)).status, 200)
+  assert.equal(verifications, 3)
+  assert.deepEqual(actions, [['inspect'], ['apply',{mode:'relay',revision:'r0'}], ['rollback',{revision:'r0'}]])
+})
+
+test('loopback adapter verifies desktop requests against the active connection service', async t => {
+  let handler
+  const { handler: route, actions } = fixture()
+  let connection, calls = 0
+  t.after(registerRoutes({inject(_services, mount) {
+    mount({get(key) { assert.equal(key, 'connection'); return connection }, webServer:{register(entry) { handler = entry.handler }}})
+  }}, route))
+  const server = http.createServer(handler)
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)) })
+  const address = 'http://127.0.0.1:' + server.address().port
+  // Use Node's HTTP transport like the desktop forwarder's peer, without generated Fetch Metadata.
+  const info = (cookie, suffix = '', body) => new Promise((resolve, reject) => {
+    const headers = { 'x-ustc-iwan-tun': '1', 'x-ustc-iwan-desktop': '1', cookie }
+    if (body !== undefined) headers['content-type'] = 'application/json'
+    const req = http.request(address + root + suffix, { method: body === undefined ? 'GET' : 'POST', headers }, res => {
+      const status = res.statusCode; res.resume(); res.once('end', () => resolve(status))
+    })
+    req.once('error', reject)
+    req.end(body === undefined ? undefined : JSON.stringify(body))
+  })
+  assert.equal(await info('session=accepted-test-session'), 403)
+  connection = { admit(req) {
+    calls++
+    assert.ok(req instanceof http.IncomingMessage)
+    assert.equal(req.headers.host, new URL(address).host)
+    return req.headers.cookie === 'session=accepted-test-session' ? { peer: {} } : { rejection: 401 }
+  } }
+  assert.equal(await info('session=made-up'), 403)
+  assert.equal(await info('session=accepted-test-session'), 200)
+  assert.equal(await info('session=accepted-test-session', '/apply', {mode:'relay',revision:'r0'}), 200)
+  assert.equal(await info('session=accepted-test-session', '/rollback', {revision:'r0'}), 200)
+  assert.equal(calls, 4)
+  assert.deepEqual(actions, [['inspect'], ['apply',{mode:'relay',revision:'r0'}], ['rollback',{revision:'r0'}]])
+})
+
 test('real loopback adapter passes transport identity to Clash TUN endpoint', async t => {
   let handler
   const {handler: route} = fixture()

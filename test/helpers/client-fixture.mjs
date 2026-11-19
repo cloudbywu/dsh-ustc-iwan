@@ -24,7 +24,7 @@ export function fixture(options = {}) {
     useEffect(fn,deps){const i=cursor++;if(!hooks[i]||!same(hooks[i].deps,deps)){hooks[i]?.cleanup?.();pending.push(()=>{hooks[i]={deps,cleanup:fn()}})}},
   }
   const response=value=>({ok:true,status:200,text:async()=>JSON.stringify({ok:true,value})})
-  const ctx={window:{...eventTarget('window'),__ModuleLoader__:{load:entry=>{exported=entry.factory(()=>React)}}},document:{...eventTarget('document'),visibilityState:'visible',getElementById:()=>true},navigator:options.navigator,console,AbortController,URL,
+  const ctx={window:{...eventTarget('window'),location:options.location,__ModuleLoader__:{load:entry=>{exported=entry.factory(()=>React)}}},document:{...eventTarget('document'),visibilityState:'visible',getElementById:()=>true},navigator:options.navigator,console,AbortController,URL,
     fetch:async(url,init)=>{requests.push({url,init});if(fetchOverride){const handled=fetchOverride(url,init);if(handled)return handled}if(url.endsWith('/settings'))server={...server,settings:{...server.settings,...JSON.parse(init.body)}};if(url.endsWith('/download'))return response({started:true});if(url.endsWith('/update/check'))return response({started:true,...server.binary});return response(server)},
     setInterval:(fn,ms)=>{intervals.set(++timerId,{fn,ms});return timerId},clearInterval:id=>intervals.delete(id),
     setTimeout:(fn,ms)=>{timeouts.set(++timerId,{fn,at:now+ms});return timerId},clearTimeout:id=>timeouts.delete(id),

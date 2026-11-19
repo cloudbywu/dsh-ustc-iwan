@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.5` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.6` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,7 +140,7 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或下载 [v0.1.5 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.5.zip) 解压，再按同样方式填入解压目录。
+或下载 [v0.1.6 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.6.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
 > `link:` 不会安装依赖。链接或从源码目录安装前，请先在项目目录运行 `npm ci --ignore-scripts --omit=peer`；改代码后重启应用生效。
@@ -195,7 +195,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | 最近日志 | 最近 40 条运行日志，可复制 |
 
 宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`，
-以及 `/ustc-iwan/api/{reconnect,download/cancel,update/check}`、`/ustc-iwan/api/auth/{start,complete,cancel}`。`/ustc-iwan/api/clash-tun` 及其 `/apply`、`/rollback` 仅供本机直连设置卡片调用。停止托管可取消正在启动的进程；
+以及 `/ustc-iwan/api/{reconnect,download/cancel,update/check}`、`/ustc-iwan/api/auth/{start,complete,cancel}`。`/ustc-iwan/api/clash-tun` 及其 `/apply`、`/rollback` 仅供本机同源设置卡片或经宿主会话认证的词元工坊桌面端调用。停止托管可取消正在启动的进程；
 关闭分流或卸载插件会清理托管进程及全部代理隧道，外部启动的进程不受影响。
 
 ## 状态驱动的操作

@@ -25,6 +25,19 @@ const detect = async ui => { await click(ui, '检测 Clash TUN'); ui.render() }
 const inspect = (ui, value = snapshot()) => ui.override(url => url === path ? ui.response(value) : null)
 const failed = (status, error) => ({ok:false,status,text:async()=>JSON.stringify({ok:false,error})})
 
+test('only the exact desktop application origin marks detection and mutation for gateway authentication', async () => {
+  for (const [url, expected] of [['dsh-app://app/settings', '1'], ['dsh-app://not-app/settings', undefined], ['http://127.0.0.1:18777/', undefined]]) {
+    const ui = fixture({ location: new URL(url) }); await ui.mount(); open(ui)
+    ui.override((requestUrl) => requestUrl === path ? ui.response(snapshot())
+      : requestUrl === path + '/apply' ? ui.response(snapshot({ rollbackAvailable: true })) : null)
+    await detect(ui)
+    click(ui, '应用所选模式…')
+    await click(ui, '确认备份并应用')
+    assert.equal(calls(ui).length, 2)
+    assert.deepEqual(calls(ui).map(({init}) => init.headers['X-USTC-IWAN-Desktop']), [expected, expected])
+  }
+})
+
 test('Clash diagnostics distinguish saved exclusions from generated profile exclusions', async () => {
   const ui = fixture(); await ui.mount()
   open(ui)
