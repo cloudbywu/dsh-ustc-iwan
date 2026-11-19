@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { once } from 'node:events'
 import { createRouteHandler, registerRoutes } from '../lib/routes.js'
+import dns from 'node:dns'
+import { createResolver } from '../lib/resolver.js'
+import { defaults, fixture } from './helpers/runtime-fixture.mjs'
 
 const request=(path,body,method='POST')=>new Request('http://localhost/ustc-iwan/api'+path,{method,...(method==='POST'?{body:typeof body==='string'?body:JSON.stringify(body??{})}:{})})
 function runtime() {
@@ -24,6 +27,47 @@ test('JSON endpoints reject null, arrays, malformed JSON and oversized bodies',a
   }
 })
 
+test('settings route returns 400 on invalid DNS or CIDR without writing',async()=>{
+  const {rt,state}=await fixture()
+  const handle=createRouteHandler(rt)
+  for(const [key,value] of [['dnsServer','[::1]:0'],['cidrs','10.0.0.0/33']]) {
+    const response=await handle(request('/settings',{[key]:value,verbose:true}))
+    assert.equal(response.status,400)
+    assert.match((await response.json()).error,new RegExp(key))
+  }
+  assert.equal(state.writes.length,0)
+  await rt.dispose()
+})
+
+test('route diagnostics reuse the routing DNS cache and return fake IPs without proxy secrets',async t=>{
+  const resolve=t.mock.method(dns.promises,'resolve4',async()=>['198.18.0.2'])
+  const {rt}=await fixture({
+    './resolver.js':{createResolver},
+    './settings-store.js':{readSettings:()=>({...defaults,dnsServer:'old.invalid:0'})},
+  },{detectedUpstreamProxy:'https://secret-user:secret-password@proxy.example.test:8443/private?token=secret'})
+  t.after(()=>rt.dispose())
+  rt.refreshDerived() // 同一份已保存的坏 DNS 配置在启动与诊断均回退系统 DNS。
+  assert.equal((await rt.decide('llm.ustc.edu.cn')).kind,'iwan')
+  assert.equal(resolve.mock.callCount(),0,'live suffix routing does not query DNS')
+  const handle=createRouteHandler(rt)
+  assert.deepEqual((await (await handle(request('/test'))).json()).value,{
+    host:'llm.ustc.edu.cn',decision:{kind:'iwan'},resolvedIps:['198.18.0.2'],fake:true,
+  })
+  assert.equal(resolve.mock.callCount(),1)
+  await rt.decide('external.test')
+  const result=(await (await handle(request('/test',{host:'external.test'}))).json()).value
+  assert.deepEqual(result,{
+    host:'external.test',decision:{kind:'upstream',url:'https://proxy.example.test:8443'},resolvedIps:['198.18.0.2'],fake:true,
+  })
+  assert.equal(resolve.mock.callCount(),2,'diagnostics reuse data cached by live routing')
+  const again=(await (await handle(request('/test',{host:'198.18.0.3'}))).json()).value
+  assert.equal(again.fake,true)
+  assert.equal(resolve.mock.callCount(),2,'IPv4 literals require no DNS')
+  const ordinary=(await (await handle(request('/test',{host:'8.8.8.8'}))).json()).value
+  assert.equal(ordinary.fake,false)
+  assert.equal(resolve.mock.callCount(),2)
+})
+
 test('route prefix does not match sibling paths and stopped runtime rejects work',async()=>{
   const rt=runtime();const handle=createRouteHandler(rt)
   assert.equal((await handle(new Request('http://localhost/ustc-iwan/apix/status'))).status,404)
@@ -37,12 +81,14 @@ test('cancel errors are returned as errors, not success payloads',async()=>{
 })
 
 test('route registration cleans up on scope and plugin disposal exactly once',()=>{
-  let mount,disposed=0;const pluginEvents={},scopeEvents={}
-  const ctx={on:(event,fn)=>{pluginEvents[event]=fn},inject:(_,fn)=>{mount=fn}}
+  let mount,registered=0,disposed=0
+  const ctx={inject:(_,fn)=>{mount=fn}}
   const unmount=registerRoutes(ctx,async()=>new Response('ok'))
-  const scope={on:(event,fn)=>{scopeEvents[event]=fn},webServer:{register:()=>()=>{disposed++}}}
-  mount(scope);scopeEvents.dispose();unmount();pluginEvents.dispose();assert.equal(disposed,1)
-  mount(scope);assert.equal(disposed,1)
+  const scope={webServer:{register:()=>{registered++;return ()=>{disposed++}}}}
+  const unmountFirst=mount(scope);unmountFirst();assert.equal(disposed,1)
+  const unmountSecond=mount(scope);unmount();unmountSecond();unmount()
+  assert.equal(disposed,2)
+  mount(scope);assert.equal(registered,2)
 })
 
 test('Node adapter accepts JSON POST bodies over a real loopback HTTP server',async t=>{

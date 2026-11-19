@@ -62,7 +62,8 @@ async function fixture({ spawnError } = {}) {
   }, { context })
   const source = await readFile(new URL('../lib/auth.js', import.meta.url), 'utf8')
   const module = new vm.SourceTextModule(source + '\nexport const inspectForTest = () => ({ active, latest, retiring })', { context })
-  await module.link((id) => { assert.equal(id, 'node:child_process'); return cp })
+  const owned = new vm.SyntheticModule(['trackOwnedProcess'], function () { this.setExport('trackOwnedProcess', () => {}) }, { context })
+  await module.link((id) => ({ 'node:child_process': cp, './owned-process.js': owned })[id])
   await module.evaluate()
   const api = module.namespace
   return { api, children, time,

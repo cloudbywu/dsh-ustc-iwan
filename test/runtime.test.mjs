@@ -1,12 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { fixture, deferred } from './helpers/runtime-fixture.mjs'
+import { fixture, deferred, defaults } from './helpers/runtime-fixture.mjs'
 
-test('SOCKS endpoint and verbose changes rebuild the active proxy',async()=>{
+test('verbose changes rebuild the proxy and the new proxy uses the configured SOCKS endpoint',async()=>{
   const {rt,state}=await fixture(); await rt.init()
   await rt.applySettings({iwanSocksPort:2080,iwanSocksHost:'localhost',verbose:true})
   assert.equal(state.starts.length,2)
-  assert.equal(state.starts[1].iwan.proxyPort,2080)
+  assert.equal(state.starts[1].iwan().proxyPort,2080)
   assert.equal(state.starts[1].verbose,true)
   assert.equal(state.closes,1);assert.equal(state.restores,1)
   await rt.dispose()
@@ -25,9 +25,29 @@ test('dispose during policy installation restores late policy exactly once',asyn
   const policy=deferred();let restored=0
   const {rt,state}=await fixture({'./policy.js':{installSplitPolicy:()=>policy.promise}})
   const initializing=rt.init();await new Promise(setImmediate)
-  const disposing=rt.dispose();policy.resolve(()=>{restored++})
+  const disposing=rt.dispose()
+  assert.equal(state.closes,1,'dispose closes the listener before pending policy installation completes')
+  policy.resolve(()=>{restored++})
   await Promise.all([initializing,disposing]);await rt.dispose()
   assert.equal(restored,1);assert.equal(state.closes,1);assert.equal(rt.runtime.policyDisposer,null)
+})
+
+test('dispose closes active tunnels without waiting for proxy policy restoration',async()=>{
+  const restore=deferred()
+  let restored=false,finished=false
+  const {rt,state}=await fixture({'./policy.js':{installSplitPolicy:async()=>async()=>{await restore.promise;restored=true}}})
+  await rt.init()
+  const dispose=rt.dispose().then(()=>{finished=true})
+  try {
+    await new Promise(setImmediate)
+    assert.equal(state.closes,1)
+    assert.equal(restored,false)
+    assert.equal(finished,false)
+  } finally {
+    restore.resolve()
+    await dispose
+  }
+  assert.equal(restored,true)
 })
 
 test('concurrent init and setting changes are serialized',async()=>{
@@ -112,10 +132,54 @@ test('external SOCKS can be used without a local executable',async()=>{
 })
 
 
-test('environment overrides remain effective after settings are saved',async()=>{
-  const {rt}=await fixture({}, {overrides:{iwanSocksPort:2080}})
-  await rt.applySettings({iwanSocksPort:1080})
-  assert.equal(rt.status().settings.iwanSocksPort,2080);await rt.dispose()
+test('environment overrides remain effective but never replace saved settings on a full-form update',async()=>{
+  const upstreamProxy='https://env-user:env-password@proxy.example.test:8443/private?token=secret'
+  const mockStore={readSettings:()=>({...defaults,iwanSocksPort:2090,dnsServer:'8.8.8.8',upstreamProxy:'http://saved.test'})}
+  const {rt,state}=await fixture({'./settings-store.js':mockStore}, {overrides:{iwanSocksPort:2080,dnsServer:'1.1.1.1',upstreamProxy}})
+  const initial=rt.status()
+  assert.deepEqual([...initial.environmentOverrides],['iwanSocksPort','dnsServer','upstreamProxy'])
+  assert.equal(initial.settings.upstreamProxy,'https://proxy.example.test:8443')
+  assert.equal((await rt.decide('external.test')).url,upstreamProxy)
+  await rt.applySettings({...initial.settings,verbose:true})
+  assert.equal(rt.status().settings.iwanSocksPort,2080)
+  assert.equal(rt.status().settings.dnsServer,'1.1.1.1')
+  assert.equal(state.writes[0].iwanSocksPort,2090)
+  assert.equal(state.writes[0].dnsServer,'8.8.8.8')
+  assert.equal(state.writes[0].upstreamProxy,'http://saved.test')
+  assert.equal(state.writes[0].verbose,true)
+  assert.doesNotMatch(JSON.stringify(rt.status()),/env-user|env-password|token=secret/)
+  await rt.dispose()
+})
+
+test('direct settings updates reject invalid DNS and CIDRs before writing or changing runtime state',async()=>{
+  const {rt,state}=await fixture({}, {overrides:{dnsServer:'1.1.1.1'}})
+  for(const [key,value] of [['dnsServer','1.1.1.1:0'],['cidrs','202.38.64.0/19,10.0.0.1/33']]) {
+    await assert.rejects(rt.applySettings({enabled:false,[key]:value}), {status:400,message:new RegExp(key)})
+  }
+  assert.equal(state.writes.length,0)
+  assert.equal(rt.status().settings.enabled,true)
+  assert.equal(rt.status().settings.dnsServer,'1.1.1.1')
+  assert.equal(rt.status().settings.cidrs,defaults.cidrs)
+  await rt.dispose()
+})
+
+test('automatic upstream is used on blank but is never written or exposed with credentials',async()=>{
+  const auto='https://auto-user:auto-password@proxy.example.test:8443/private?token=secret'
+  const {rt,state}=await fixture({}, {detectedUpstreamProxy:auto})
+  assert.equal(rt.status().autoUpstreamProxy,'https://proxy.example.test:8443')
+  assert.equal(rt.status().settings.upstreamProxy,'')
+  assert.deepEqual([...rt.status().environmentOverrides],[])
+  assert.equal((await rt.decide('external.test')).url,auto)
+  await rt.applySettings({...rt.status().settings,verbose:true})
+  assert.equal(state.writes[0].upstreamProxy,'')
+  assert.equal((await rt.decide('external.test')).url,auto)
+  await rt.applySettings({upstreamProxy:'http://manual.test:8080'})
+  assert.equal((await rt.decide('external.test')).url,'http://manual.test:8080')
+  await rt.applySettings({upstreamProxy:''})
+  assert.equal((await rt.decide('external.test')).url,auto)
+  assert.equal(state.writes.at(-1).upstreamProxy,'')
+  assert.doesNotMatch(JSON.stringify(rt.status()),/auto-user|auto-password|token=secret/)
+  await rt.dispose()
 })
 
 test('logging failures do not interrupt lifecycle cleanup',async()=>{

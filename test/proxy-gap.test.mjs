@@ -246,6 +246,27 @@ test('default local window covers a 2100ms native recovery without direct POST',
   assert.equal(logs.some(line => line.includes('回退直连')), false)
 })
 
+test('the same proxy routes new requests to a replacement SOCKS listener without replay', { timeout: 4000 }, async t => {
+  let directPosts = 0
+  const direct = await listen(t, http.createServer((req, res) => { directPosts++; req.resume(); res.end('wrong') }))
+  const a = await listen(t, http.createServer((req, res) => { req.resume(); res.end('first') }))
+  const b = await listen(t, http.createServer((req, res) => { req.resume(); res.end('replacement') }))
+  const first = { accepted: 0, connects: 0 }, second = { accepted: 0, connects: 0 }
+  const initial = await listen(t, relay(a.port, first))
+  const replacement = await listen(t, relay(b.port, second))
+  let endpoint = { proxyPort: initial.port }
+  const p = await proxy(t, { iwan: () => {
+    if (!endpoint) queueMicrotask(() => { endpoint = { proxyPort: replacement.port } })
+    return endpoint
+  } })
+  const target = 'http://127.0.0.1:' + direct.port + '/model'
+  assert.equal((await request(p.port, target)).text, 'first')
+  endpoint = null // Startup/recovery has not published an owned endpoint yet.
+  assert.equal((await request(p.port, target)).text, 'replacement')
+  assert.equal(directPosts, 0)
+  assert.deepEqual([first.connects, second.connects], [1, 1])
+})
+
 test('local recovery window rejects values beyond the hard maximum', () => {
   for (const socksRetryWindowMs of [-1, 3001, Infinity, NaN]) {
     assert.throws(() => startSplitProxy({ port: 0, socksRetryWindowMs }), RangeError)

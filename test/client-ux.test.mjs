@@ -4,7 +4,7 @@ import { fixture, deferred } from './helpers/client-fixture.mjs'
 
 test('persisted downloaded client shows installed state even when current progress is idle',async()=>{
   const ui=fixture();await ui.mount()
-  assert.equal(ui.button('已下载').props.disabled,true)
+  assert.equal(ui.element('已下载').props.role,'status');assert.equal(ui.button('已下载'),undefined)
   assert.equal(ui.button('检查更新').props.disabled,false);assert.equal(ui.button('重新下载').props.disabled,false)
   assert.equal(ui.button('下载 iwan-client-oidc'),undefined);assert.match(ui.text(),/v1[.]0/)
 })
@@ -41,7 +41,7 @@ test('stored credentials are recognized after restart but are not called valid o
 test('active attested authentication is valid without asking for another login',async()=>{
   const ui=fixture();ui.setServer({...ui.server(),iwan:{managed:true,socksAlive:true},auth:{state:'idle',credentials:{state:'valid',serverCount:1,source:'managed-connection',verifiedAt:123,message:'当前托管会话已认证'}}});await ui.mount()
   assert.equal(ui.element('认证有效').props.className,'dsh-ustc-ok')
-  assert.equal(ui.button('托管运行中').props.disabled,true);assert.equal(ui.button('开始认证'),undefined);assert.equal(ui.button('连接并验证'),undefined)
+  assert.equal(ui.element('托管运行中').props.role,'status');assert.equal(ui.button('托管运行中'),undefined);assert.equal(ui.button('开始认证'),undefined);assert.equal(ui.button('连接并验证'),undefined)
 })
 
 test('completed fetch alone still waits for connection verification',async()=>{
@@ -57,20 +57,20 @@ test('missing binary guides first download and disables impossible auth and star
 
 test('maintenance blocks conflicting actions and offers cancellation with accurate phase',async()=>{
   const ui=fixture();ui.setServer({...ui.server(),maintenance:{running:true,mode:'update',phase:'preparing'}});await ui.mount()
-  assert.equal(ui.button('准备中…').props.disabled,true);assert.equal(ui.button('检查更新').props.disabled,true)
+  assert.equal(ui.element('准备中…').props.role,'status');assert.equal(ui.button('检查更新').props.disabled,true)
   assert.equal(ui.button('重新认证').props.disabled,true);assert.equal(ui.button('保存配置').props.disabled,true);assert.equal(ui.button('取消下载').props.disabled,false)
   await ui.button('取消下载').props.onClick();assert.ok(ui.requests.some(x=>x.url.endsWith('/download/cancel')))
 })
 
 test('configured manual client is not labeled downloaded and cache action is explicit',async()=>{
   const ui=fixture();ui.setServer({...ui.server(),binary:{path:'custom.exe',installed:true,downloaded:false,kind:'configured',version:null}});await ui.mount()
-  assert.equal(ui.button('已配置').props.disabled,true);assert.equal(ui.button('已下载'),undefined)
+  assert.equal(ui.element('已配置').props.role,'status');assert.equal(ui.button('已配置'),undefined);assert.equal(ui.element('已下载'),undefined)
   assert.ok(ui.button('下载缓存副本'));assert.equal(ui.button('重新下载'),undefined);assert.match(ui.text(),/不修改其他手动路径/)
 })
 
 test('unknown process termination blocks restart and remains observable',async()=>{
   const ui=fixture();ui.setServer({...ui.server(),iwan:{managed:false,connecting:false,stopping:true,socksAlive:false}});await ui.mount()
-  assert.equal(ui.button('停止中…').props.disabled,true)
+  assert.equal(ui.element('停止中…').props.role,'status');assert.equal(ui.button('重新连接').props.disabled,true)
 })
 
 test('first-time onboarding guides progress step by step, toggles cleanly, and auto-collapses once ready',async()=>{
@@ -242,4 +242,81 @@ test('stale clipboard copy from canceled auth session does not pollute a new aut
   assert.equal(ui2.staleUpdates(),0)
 
   ui.unmount()
+})
+
+test('split-test presets fill without posting or losing unsaved settings; fake-IP is explicit',async()=>{
+  const ui=fixture();await ui.mount()
+  ui.field('iwanClientPath').props.onChange({target:{value:'C:/draft.exe'}});ui.render()
+  assert.equal(ui.button('llm.ustc.edu.cn').props['aria-pressed'],true)
+  ui.button('www.baidu.com').props.onClick();ui.render()
+  assert.equal(ui.button('www.baidu.com').props['aria-pressed'],true)
+  assert.equal(ui.input('输入要测试的域名或网址，如 llm.ustc.edu.cn').props.value,'www.baidu.com')
+  assert.ok(ui.requests.every(({url})=>url.endsWith('/status')))
+  await ui.button('刷新状态').props.onClick();ui.render()
+  assert.equal(ui.button('www.baidu.com').props['aria-pressed'],true)
+  assert.equal(ui.field('iwanClientPath').props.value,'C:/draft.exe')
+  ui.override(url=>url.endsWith('/test')?ui.response({host:'www.baidu.com',decision:{kind:'upstream'},resolvedIps:['198.18.0.10'],fake:true}):null)
+  await ui.button('测试分流').props.onClick();ui.render()
+  assert.match(ui.text(),/www.baidu.com → 走上游代理/)
+  assert.match(ui.text(),/198[.]18[.]0[.]10/)
+  assert.match(ui.text(),/检测到 fake-ip，按域名后缀判定/)
+})
+
+test('a preset chosen during a pending test does not show that earlier host’s result',async()=>{
+  const ui=fixture(),pending=deferred();await ui.mount()
+  ui.override(url=>url.endsWith('/test')?pending.promise:null)
+  const testing=ui.button('测试分流').props.onClick()
+  ui.button('www.baidu.com').props.onClick();ui.render()
+  pending.resolve(ui.response({host:'llm.ustc.edu.cn',decision:{kind:'iwan'},resolvedIps:[],fake:false}))
+  await testing;ui.render()
+  assert.doesNotMatch(ui.text(),/llm[.]ustc[.]edu[.]cn →/)
+  assert.equal(ui.button('www.baidu.com').props['aria-pressed'],true)
+})
+
+test('logs show newest first and copy exactly the displayed text; path copies only its value',async()=>{
+  const copied=[]
+  const ui=fixture({navigator:{clipboard:{writeText:async text=>copied.push(text)}}})
+  const path='C:/directory with spaces/mock.exe'
+  const entries=[{at:1700000000000,msg:'older report'},{at:1700000001000,msg:'newer report'}]
+  ui.setServer({...ui.server(),binary:{...ui.server().binary,path},log:entries});await ui.mount()
+  const displayed=ui.nodes().find(node=>node.type==='pre').children[0]
+  assert.equal(displayed,entries.slice().reverse().map(({at,msg})=>new Date(at).toLocaleTimeString()+' '+msg).join('\n'))
+  await ui.button('复制日志').props.onClick();ui.render()
+  assert.deepEqual(copied,[displayed]);assert.ok(ui.element('已复制日志'))
+  await ui.button('复制路径').props.onClick();ui.render()
+  assert.deepEqual(copied,[displayed,path]);assert.ok(ui.element('已复制客户端路径'))
+  assert.equal(ui.element('已复制日志'),undefined)
+})
+
+test('log copy notices ignore refreshed data and an older copy cannot replace a newer one',async()=>{
+  const oldLog=deferred(),newPath=deferred()
+  const ui=fixture({navigator:{clipboard:{writeText:text=>text.includes('old report')?oldLog.promise:newPath.promise}}})
+  ui.setServer({...ui.server(),log:[{at:1,msg:'old report'}]});await ui.mount()
+  const copyingLog=ui.button('复制日志').props.onClick()
+  ui.setServer({...ui.server(),log:[{at:2,msg:'new report'}]})
+  await ui.button('刷新状态').props.onClick();ui.render()
+  const copyingPath=ui.button('复制路径').props.onClick()
+  newPath.resolve();await copyingPath
+  oldLog.resolve();await copyingLog;ui.render()
+  assert.ok(ui.element('已复制客户端路径'));assert.equal(ui.element('已复制日志'),undefined)
+})
+
+test('empty logs cannot be copied and inaccessible clipboard leaves manual guidance',async()=>{
+  const ui=fixture();await ui.mount()
+  assert.equal(ui.button('复制日志').props.disabled,true)
+  await ui.button('复制路径').props.onClick();ui.render()
+  assert.ok(ui.element('无法自动复制，请手动选中客户端路径复制'))
+})
+
+test('the guide does not call a managed session ready when SOCKS or host policy is unavailable',async()=>{
+  const ui=fixture()
+  const ready={...ui.server(),iwan:{managed:true,socksAlive:true},auth:{state:'idle',credentials:{state:'valid',serverCount:1}}}
+  ui.setServer({...ready,iwan:{...ready.iwan,socksAlive:false}});await ui.mount()
+  assert.match(ui.text(),/首次使用指引（已完成 2\/3 步）/)
+  ui.setServer({...ready,policyInstalled:false});await ui.button('刷新状态').props.onClick();ui.render()
+  assert.match(ui.text(),/首次使用指引（已完成 2\/3 步）/)
+  ui.setServer(ready);await ui.button('刷新状态').props.onClick();ui.render()
+  assert.ok(ui.element('使用指引 · 已就绪'))
+  ui.button('查看指引').props.onClick();ui.render()
+  assert.match(ui.text(),/请实际访问科大模型或校内站点确认可达/)
 })

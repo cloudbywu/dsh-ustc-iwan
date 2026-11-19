@@ -23,7 +23,7 @@ C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝�
 ```
 
 旧的无作用域包已撤销，请使用 scoped 包名；若官方源暂不可见，可改用 GitHub 或本地路径。
-详见 [安装](#安装)。安装后打开 **设置 → USTC IWAN**。
+详见 [安装](#安装)。安装后打开 **设置 → USTC iWAN**。内置自动下载目前只提供 **Windows x64** 客户端；Linux/macOS 请自行准备兼容的客户端，或连接外部 SOCKS5（关闭插件托管并填写其监听地址）。
 
 ---
 
@@ -49,8 +49,8 @@ C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝�
         ▼
 ┌─ 分流代理 127.0.0.1:18118（插件内置）────────────────┐
 │  目标域名 → 解析 IPv4                                 │
-│  ① 命中 USTC 网段（11 段，内置） ──→ iWAN SOCKS5:1080 │
-│  ② 域名后缀命中 ustc.edu.cn 等   ──→ iWAN SOCKS5:1080 │
+│  ① 命中 USTC 网段（11 段，内置） ──→ iWAN SOCKS5:21080 │
+│  ② 域名后缀命中 ustc.edu.cn 等   ──→ iWAN SOCKS5:21080 │
 │  ③ fake-ip（TUN 接管 DNS）按 ② 兜底判断              │
 │  ④ 其余目标 ──→ 用户原有代理（如 Clash 7890）或直连   │
 │  ※ iWAN 出口连不上时自动回退直连，不掉线              │
@@ -81,7 +81,7 @@ C:\Users\<你>\dsh-ustc-iwan                     # 本地目录（必须是绝�
 
 词元工坊的插件页支持 **npm 包名 / GitHub 仓库地址 / 本地目录路径** 三种来源，
 任选一种粘贴进「插件 → 安装」即可。安装完成后**完全退出并重启应用**，
-再打开 设置 → USTC IWAN。
+再打开 设置 → USTC iWAN。
 
 | 来源 | 适合 | 升级方式 |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.3` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.4` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,7 +140,7 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或下载 [v0.1.3 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.3.zip) 解压，再按同样方式填入解压目录。
+或下载 [v0.1.4 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.4.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
 > 以 `link:` 链接方式安装时不会执行依赖安装，因此本项目**刻意保持零第三方依赖**，
@@ -162,7 +162,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 ### 安装后
 
 1. **完全退出并重启词元工坊**（客户端 bundle 在启动时组合，仅刷新页面可能不够）；
-2. 打开 **设置 → USTC IWAN**，确认「分流代理」指示灯为绿色；
+2. 打开 **设置 → USTC iWAN**，确认「分流代理」指示灯为绿色；
 3. 按 [首次使用](#首次使用) 下载 iWAN 客户端并完成一次认证。
 
 ## 首次使用
@@ -178,7 +178,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
    如需终端方式，也可自行运行 `iwan-client-oidc-windows-x86_64.exe --fetch`。
 
 4. 新配置默认启用「托管 iWAN 客户端」；下载或认证完成后自动尝试连接。已有关闭选项会保留，也可手动点 **启动 iWAN**；
-5. 用 **测试分流** 输入 `llm.ustc.edu.cn`，显示「走 iWAN」即成功。
+5. 用 **测试分流** 输入 `llm.ustc.edu.cn`，显示「走 iWAN」表示规则命中；还需确认 SOCKS5 在线并实际访问目标。
 
 ## 设置卡片
 
@@ -188,14 +188,14 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 | 分组 | 内容 |
 | --- | --- |
-| 运行状态 | 分流代理 / 出站策略 / iWAN SOCKS5 / 托管进程 指示灯；启动、重新连接、停止托管、恢复进度、刷新状态和分流测试 |
+| 运行状态 | 分流代理、出站策略、SOCKS5、托管进程和恢复进度；支持启动、重新连接、停止托管、刷新状态和分流规则测试 |
 | 统一身份认证 | 应用内授权、提交回调、全阶段取消与结果状态 |
 | iWAN 客户端 | **一键下载 iwan-client-oidc**（进度条、sha256 记录、失败自动清理） |
 | 配置 | SOCKS 地址、端口和日志开关热更新；轮询保留未保存草稿，支持显式放弃修改 |
-| 最近日志 | 最近 40 条运行日志 |
+| 最近日志 | 最近 40 条运行日志，可复制 |
 
 宿主侧对应路由：`/ustc-iwan/api/{status,settings,download,connect,disconnect,test}`，
-以及 `/ustc-iwan/api/reconnect`、`/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
+以及 `/ustc-iwan/api/{reconnect,download/cancel,update/check}`、`/ustc-iwan/api/auth/{start,complete,cancel}`。停止托管可取消正在启动的进程；
 关闭分流或卸载插件会清理托管进程及全部代理隧道，外部启动的进程不受影响。
 
 ## 状态驱动的操作
@@ -254,19 +254,23 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | `USTC_IWAN_DNS` | `dnsServer` |
 | `USTC_IWAN_DISABLED=1` | 完全停用本插件 |
 
+设置卡片会标记当前由环境变量覆盖的字段。取消环境变量后重启，原来保存的值仍然有效。
+
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
 | `enabled` | `true` | 关闭后插件完全不介入（策略恢复原状） |
 | `listenPort` | `18118` | 本地分流代理端口 |
-| `iwanSocksHost` / `iwanSocksPort` | `127.0.0.1` / `1080` | iWAN SOCKS5 地址 |
+| `iwanSocksHost` / `iwanSocksPort` | `127.0.0.1` / `21080` | 托管 SOCKS5 首选地址；已有配置沿用保存值 |
 | `manageClient` | `true` | 新配置默认托管；客户端和认证配置就绪后自动连接，保留已有明确关闭选项 |
-| `iwanClientPath` | 空 | 托管模式下 exe 路径；留空用已下载副本 |
+| `iwanClientPath` | 空 | 托管客户端路径；留空用已下载副本，显式路径无效会报错，不会回退 |
 | `iwanServer` | 空 | 线路名或序号（传给 `--server`） |
-| `upstreamProxy` | 自动 | 非 USTC 流量的上游 HTTP 代理；留空自动沿用启动环境里的 `HTTP(S)_PROXY`，再无则直连 |
-| `cidrs` | 上表 11 段 | USTC 网段（逗号分隔） |
+| `upstreamProxy` | 空（自动） | 非 USTC 流量的上游 HTTP(S) 代理；留空沿用启动时的环境代理，再无则直连；自动探测值不写入配置 |
+| `cidrs` | 上表 11 段 | IPv4 CIDR，支持换行、空白或逗号分隔 |
 | `domainSuffixes` | `ustc.edu.cn,ustclug.org,ustc.life` | 域名后缀兜底 |
-| `dnsServer` | 系统 | 分流解析用 DNS；TUN fake-ip 环境建议 `223.5.5.5` |
+| `dnsServer` | 系统 | 分流解析用 DNS；接受 IPv4、IPv6、`IPv4:端口` 或 `[IPv6]:端口`，留空使用默认解析；TUN fake-ip 环境可尝试 `223.5.5.5` |
 | `verbose` | `false` | 逐请求日志 |
+
+托管启动时，若首选端口已被进程占用或被 Windows 保留，插件会尝试操作系统分配的可用端口。运行状态显示实际端口，分流和健康检查随之切换；保存的首选端口不变，下次启动仍优先尝试它。使用外部客户端时请关闭托管并填写其实际监听地址（例如 `127.0.0.1:1080`）；不会改动外部进程或自动切换其端口。
 
 ## 与代理软件共存
 
@@ -282,12 +286,13 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 | 现象 | 处理 |
 | --- | --- |
-| 设置里没有「USTC IWAN」卡片 | 完全退出应用后重启（客户端 bundle 需重建）；仍无则按 F12 看控制台报错 |
-| `端口 1080 上没有…且未配置 iwanClientPath` | 先手动启动 iWAN，或填写「客户端路径」 |
+| 设置里没有「USTC iWAN」卡片 | 完全退出应用后重启（客户端 bundle 需重建）；仍无则按 F12 看控制台报错 |
+| SOCKS5 离线且没有客户端 | 下载或配置客户端；如使用外部 iWAN，请关闭托管、填写实际监听地址并启动它 |
 | iWAN 客户端一启动就退出 | 先在终端单独跑 `--connect --socks` 看输出；多为线路选择或认证过期，重跑 `--fetch` |
 | USTC 请求走了直连且校外不可达 | 确认 iWAN SOCKS 端口存活；看日志是否提示 fake-ip，必要时设 DNS 为 `223.5.5.5` |
 | 下载失败 | 走 GitHub Releases，网络不畅时手动下载并填入「客户端路径」 |
 | 休眠后离线 | 自动托管会在宽限和退避后恢复；检查恢复提示，必要时点「重新连接」。手动暂停或外部客户端不会被自动拉起 |
+| 宿主更新已下载但未完成安装 | 若旧版插件可能影响退出，可先停用插件，结束运行中的任务，完全退出宿主后再更新。若停用后仍失败，请记录宿主版本和更新退出日志 |
 
 ## 已知边界
 
@@ -321,6 +326,11 @@ lib/resolver.js       带缓存 DNS 解析
 lib/iwan-client.js    iWAN 客户端探测/托管
 lib/reconnect-monitor.js 休眠心跳、健康检查与重试退避
 lib/binary.js         iWAN 客户端下载
+lib/auth.js           应用内统一身份认证
+lib/credentials.js    线路配置的脱敏检查
+lib/defaults.js       默认端口与分流规则
+lib/home.js           插件数据目录定位
+lib/owned-process.js  托管子进程退出保护
 lib/policy.js         出站策略安装/恢复
 lib/settings-store.js 设置持久化
 lib/client.js         浏览器半边（设置卡片）

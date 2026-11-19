@@ -67,7 +67,7 @@ test('manual stop cancels a queued explicit reconnect without late process creat
 
 test('stale probe after a user operation is discarded instead of restarting new connection',async()=>{
   const probe=deferred();const {rt,state}=await fixture({'./iwan-client.js':{isPortOpen:()=>probe.promise}},managed)
-  const checking=state.monitor.probe({});await rt.connect();probe.resolve(false)
+  await rt.connect();const checking=state.monitor.probe({});await rt.connect();probe.resolve(false)
   await assert.rejects(checking,{name:'AbortError'});assert.equal(state.clients.length,1);await rt.dispose()
 })
 

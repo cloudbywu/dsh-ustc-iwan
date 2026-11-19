@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import net from 'node:net'
 import vm from 'node:vm'
 import { isPortOpen, ensureIwanClient } from '../lib/iwan-client.js'
+import { DEFAULT_IWAN_SOCKS_PORT } from '../lib/defaults.js'
 
 function clock() {
   let now = 0
@@ -54,10 +55,11 @@ function childProcess(autoExit) {
   return child
 }
 
-async function fixture({ ports = [false, true], fallback = false, spawnError, autoExit = true } = {}) {
+async function fixture({ ports = [false, true], fallback = false, spawnError, autoExit = true, binds = [], realBinds = false } = {}) {
   const time = clock()
   const children = []
   const sockets = []
+  const servers = []
   const context = vm.createContext({ URL, AbortController, setTimeout: time.setTimeout, clearTimeout: time.clearTimeout })
   const cp = new vm.SyntheticModule(['spawn'], function () {
     this.setExport('spawn', (exe, args, options) => {
@@ -69,7 +71,25 @@ async function fixture({ ports = [false, true], fallback = false, spawnError, au
     })
   }, { context })
   const network = new vm.SyntheticModule(['default'], function () {
-    this.setExport('default', { connect(options) {
+    this.setExport('default', { createServer(handler) {
+      if (realBinds) return net.createServer(handler)
+      const server = new EventEmitter()
+      servers.push(server)
+      server.listen = (options) => {
+        server.options = options
+        const outcome = binds.shift() ?? (options.port || 50000 + servers.length)
+        if (outcome !== 'hang') queueMicrotask(() => {
+          if (server.closed) return
+          if (outcome instanceof Error) server.emit('error', outcome)
+          else {
+            server.address = () => ({ port: outcome })
+            server.emit('listening')
+          }
+        })
+      }
+      server.close = (done) => { server.closed = true; queueMicrotask(done) }
+      return server
+    }, connect(options) {
       const outcome = ports.length ? ports.shift() : fallback
       if (outcome instanceof Error) throw outcome
       const socket = new EventEmitter()
@@ -84,9 +104,13 @@ async function fixture({ ports = [false, true], fallback = false, spawnError, au
   }, { context })
   const source = await readFile(new URL('../lib/iwan-client.js', import.meta.url), 'utf8')
   const module = new vm.SourceTextModule(source, { context })
-  await module.link((id) => id === 'node:child_process' ? cp : network)
+  const defaults = new vm.SyntheticModule(['DEFAULT_IWAN_SOCKS_PORT'], function () {
+    this.setExport('DEFAULT_IWAN_SOCKS_PORT', DEFAULT_IWAN_SOCKS_PORT)
+  }, { context })
+  const owned = new vm.SyntheticModule(['trackOwnedProcess'], function () { this.setExport('trackOwnedProcess', () => {}) }, { context })
+  await module.link((id) => ({ 'node:child_process': cp, 'node:net': network, './defaults.js': defaults, './owned-process.js': owned })[id])
   await module.evaluate()
-  return { api: module.namespace, children, sockets, time,
+  return { api: module.namespace, children, sockets, servers, time,
     start(options = {}) { return module.namespace.ensureIwanClient({ exePath: 'mock-client', ...options }) },
   }
 }
@@ -339,6 +363,20 @@ test('client: explicit server does not answer selection prompt and logs are boun
   assert.equal(f.time.tasks.size, 0)
 })
 
+test('client: assembles fragmented output into bounded timestamp-free log entries', async () => {
+  const f = await fixture(), logs = []
+  await f.start({ log: text => logs.push(text) })
+  const child = f.children[0]
+  const base = logs.length
+  child.stdout.emit('data', '[2026-11-19T00:07:16.456Z IN')
+  assert.equal(logs.length, base)
+  child.stdout.emit('data', 'FO started]\r\nordinary output\n' + 'x'.repeat(5000))
+  child.stdout.emit('data', '\nnext line\n')
+  child.stderr.emit('data', '[2026-11-19T00:07:17+08:00] WARN last line')
+  child.finish(1)
+  assert.deepEqual(logs.slice(base), ['[INFO started]', 'ordinary output', 'next line', 'WARN last line'])
+})
+
 test('client: error after readiness updates handle, and logging errors cannot break cleanup', async () => {
   const f = await fixture()
   const handle = await f.start({ log() { throw new Error('logger failure') } })
@@ -396,9 +434,9 @@ test('client: authentication proof requires complete owned stdout listener evide
   const f=await fixture();let spawned
   const handle=await f.start({onSpawned:value=>{spawned=value}});const child=f.children[0]
   assert.equal(spawned,handle);assert.equal(handle.isAuthenticated(),false)
-  child.stderr.emit('data','SOCKS5 listening on 127.0.0.1:1080\n');assert.equal(handle.isAuthenticated(),false)
-  child.stdout.emit('data','SOCKS5 listening on 127.0.0.1:1081\n');assert.equal(handle.isAuthenticated(),false)
-  child.stdout.emit('data','SOCKS5 listening on 127.0.0.1:108');assert.equal(handle.isAuthenticated(),false)
+  child.stderr.emit('data','SOCKS5 listening on 127.0.0.1:21080\n');assert.equal(handle.isAuthenticated(),false)
+  child.stdout.emit('data','SOCKS5 listening on 127.0.0.1:21081\n');assert.equal(handle.isAuthenticated(),false)
+  child.stdout.emit('data','SOCKS5 listening on 127.0.0.1:2108');assert.equal(handle.isAuthenticated(),false)
   child.stdout.emit('data','0');assert.equal(handle.isAuthenticated(),false)
   child.stdout.emit('data','\n');assert.equal(handle.isAuthenticated(),true);assert.ok(handle.authenticatedAt>0)
   child.finish();assert.equal(handle.isAuthenticated(),false);assert.equal(handle.hasExited(),true)
@@ -421,13 +459,13 @@ test('client: spawned pending handle remains awaitable after connection abort',a
 
 test('client: IPv6 listener argument and authentication evidence use bracketed authority',async()=>{
   const f=await fixture();const handle=await f.start({socksHost:'::1'})
-  assert.ok(f.children[0].command.args.includes('[::1]:1080'))
-  f.children[0].stdout.emit('data','SOCKS5 listening on [::1]:1080\n');assert.equal(handle.isAuthenticated(),true)
+  assert.ok(f.children[0].command.args.includes('[::1]:21080'))
+  f.children[0].stdout.emit('data','SOCKS5 listening on [::1]:21080\n');assert.equal(handle.isAuthenticated(),true)
   await handle.stop()
 })
 
 const reconnectLine = (n = 1, m = 5) => 'connection ended: send VPN packet; reconnecting (' + n + '/' + m + ')...\n'
-const listenerLine = 'SOCKS5 listening on 127.0.0.1:1080\n'
+const listenerLine = 'SOCKS5 listening on 127.0.0.1:21080\n'
 
 test('client: native attempts preserve first deadline and ignore repeated progress', async () => {
   let time = 0
@@ -557,7 +595,7 @@ test('client: native reconnect consumes fresh fragmented lines and invalidates o
   assert.equal(handle.reconnectState().since, 200)
   child.stdout.emit('data', 'ordinary log\n')
   child.stderr.emit('data', listenerLine)
-  child.stdout.emit('data', listenerLine.replace(':1080', ':1081'))
+  child.stdout.emit('data', listenerLine.replace(':21080', ':21081'))
   child.stdout.emit('data', listenerLine.replace('127.0.0.1', '127.0.0.2'))
   assert.equal(handle.isReconnecting(), true)
   time = 500
@@ -571,4 +609,206 @@ test('client: native reconnect consumes fresh fragmented lines and invalidates o
   child.stderr.emit('data', 'next status\n')
   assert.equal(handle.isReconnecting(), false)
   await handle.stop()
+})
+
+test('client: managed startup bypasses a real busy listener and releases the new bind', async () => {
+  const busy = net.createServer((socket) => socket.destroy())
+  const listen = (server, port) => new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(port, '127.0.0.1', resolve)
+  })
+  const close = (server) => new Promise((resolve) => server.close(resolve))
+  await listen(busy, 0)
+  try {
+    const requested = busy.address().port
+    const f = await fixture({ ports: [true], realBinds: true })
+    let notifySpawn
+    const spawned = new Promise((resolve) => { notifySpawn = resolve })
+    const result = f.start({ autoSwitchPort: true, socksPort: requested, onSpawned: notifySpawn })
+    const handle = await Promise.race([spawned, result])
+    const chosen = handle.socksPort
+    assert.equal(handle.socksHost, '127.0.0.1')
+    assert.ok(chosen >= 1024 && chosen !== requested)
+    assert.throws(() => { handle.socksPort = requested }, TypeError)
+    const child = f.children[0]
+    assert.ok(child.command.args.includes('127.0.0.1:' + chosen))
+    const released = net.createServer()
+    await listen(released, chosen)
+    await close(released)
+    child.stdout.emit('data', 'SOCKS5 listening on 127.0.0.1:' + chosen + '\n')
+    f.time.tick(200)
+    assert.equal(await result, handle)
+    await handle.stop()
+    assert.equal(await isPortOpen(requested), true)
+  } finally { await close(busy) }
+})
+
+for (const exclusion of [{ code: 'EACCES' }, { errno: 10013 }, { errno: -10048 }]) {
+  test('client: preflight handles Windows excluded port ' + JSON.stringify(exclusion), async () => {
+    const f = await fixture({ binds: [Object.assign(new Error('excluded'), exclusion), 53000], ports: [true] })
+    const result = f.start({ autoSwitchPort: true, socksHost: '[::1]' })
+    await flush()
+    assert.deepEqual(f.servers.map(({ options }) => ({ ...options })), [
+      { host: '::1', port: 21080, exclusive: true }, { host: '::1', port: 0, exclusive: true },
+    ])
+    assert.equal(f.servers[1].closed, true)
+    assert.equal(f.children.length, 1)
+    assert.ok(f.children[0].command.args.includes('[::1]:53000'))
+    f.children[0].stdout.emit('data', 'SOCKS5 listening on [::1]:53000\n')
+    f.time.tick(200)
+    const handle = await result
+    assert.equal(handle.socksHost, '::1')
+    assert.equal(handle.socksPort, 53000)
+    await handle.stop()
+  })
+}
+
+test('client: managed readiness needs fresh owned stdout before TCP and survives native renew', async () => {
+  const f = await fixture({ ports: ['hang', true] })
+  let ready = false
+  const result = f.start({ autoSwitchPort: true }).then((handle) => { ready = true; return handle })
+  await flush()
+  const child = f.children[0]
+  assert.ok(child.command.args.includes('127.0.0.1:21080'))
+  child.stderr.emit('data', listenerLine)
+  child.stdout.emit('data', listenerLine.replace(':21080', ':21081'))
+  child.stdout.emit('data', listenerLine.slice(0, -1))
+  f.time.tick(200)
+  assert.equal(f.sockets.length, 0)
+  assert.equal(ready, false)
+  child.stdout.emit('data', '\n')
+  f.time.tick(200)
+  assert.equal(f.sockets.length, 1)
+  child.stderr.emit('data', reconnectLine())
+  child.stdout.emit('data', listenerLine)
+  f.sockets[0].emit('connect')
+  await flush()
+  assert.equal(ready, false, 'TCP from a previous proof cannot attest the renewed listener')
+  f.time.tick(200)
+  const handle = await result
+  assert.equal(handle.isAuthenticated(), true)
+  child.stderr.emit('data', reconnectLine(2))
+  assert.equal(handle.isAuthenticated(), false)
+  child.stdout.emit('data', listenerLine)
+  assert.equal(handle.isAuthenticated(), true)
+  await handle.stop()
+})
+
+test('client: bind race drains stderr after exit and only retries on close', async () => {
+  const f = await fixture({ binds: [21080, 53001], ports: [true] })
+  const result = f.start({ autoSwitchPort: true })
+  await flush()
+  const first = f.children[0]
+  f.time.tick(200)
+  assert.equal(f.sockets.length, 0, 'a foreign listener cannot satisfy startup')
+  first.emit('exit', 1, null)
+  first.stderr.emit('data', 'Error: bind SOCKS5 listener 127.0.0.1:21080\r\n\r\nCaused by:\r\n    试图以访问权限所禁止的方式访问套接字。 (os error 10013)')
+  await flush()
+  assert.equal(f.children.length, 1)
+  first.emit('close', 1, null)
+  await flush()
+  assert.equal(f.children.length, 2)
+  assert.deepEqual(first.kills, [])
+  f.children[1].stdout.emit('data', 'SOCKS5 listening on 127.0.0.1:53001\n')
+  f.time.tick(200)
+  const handle = await result
+  assert.equal(handle.socksPort, 53001)
+  await handle.stop()
+})
+
+test('client: native bind race waits for confirmed teardown and shares the original deadline', async () => {
+  const f = await fixture({ autoExit: false })
+  const result = assert.rejects(f.start({ autoSwitchPort: true, timeoutMs: 40 }), { name: 'TimeoutError' })
+  await flush()
+  const first = f.children[0]
+  f.time.tick(15)
+  first.stderr.emit('data', 'connection ended: bind SOCKS5 listener 127.0.0.1:21080; reconnecting (1/5)...\n')
+  assert.deepEqual(first.kills, ['SIGTERM'])
+  await flush()
+  assert.equal(f.children.length, 1)
+  first.finish(null, 'SIGTERM')
+  await flush()
+  assert.equal(f.children.length, 2)
+  f.time.tick(25)
+  await result
+  const second = f.children[1]
+  assert.deepEqual(second.kills, ['SIGTERM'])
+  second.finish(null, 'SIGTERM')
+  assert.equal(f.time.tasks.size, 0)
+})
+
+test('client: abort during preflight closes the bind without spawning', async () => {
+  const f = await fixture({ binds: ['hang'] })
+  const controller = new AbortController()
+  const result = assert.rejects(f.start({ autoSwitchPort: true, signal: controller.signal }), { name: 'AbortError' })
+  controller.abort()
+  await result
+  assert.equal(f.servers[0].closed, true)
+  assert.equal(f.servers[0].listenerCount('error'), 0)
+  assert.equal(f.children.length, 0)
+  assert.equal(f.time.tasks.size, 0)
+  assert.equal(getEventListeners(controller.signal, 'abort').length, 0)
+})
+
+test('client: abort while retiring a bind-raced child cannot spawn a replacement', async () => {
+  const f = await fixture({ autoExit: false })
+  const controller = new AbortController()
+  let childHandle
+  const result = assert.rejects(f.start({ autoSwitchPort: true, signal: controller.signal,
+    onSpawned: (handle) => { childHandle = handle } }), { name: 'AbortError' })
+  await flush()
+  const child = f.children[0]
+  child.stderr.emit('data', 'connection ended: bind SOCKS5 listener 127.0.0.1:21080; reconnecting (1/5)...\n')
+  controller.abort()
+  await result
+  const stopping = childHandle.stop()
+  f.time.tick(1500)
+  await stopping
+  assert.deepEqual(child.kills, ['SIGTERM', 'SIGKILL'])
+  assert.equal(childHandle.hasExited(), false)
+  child.finish(null, 'SIGKILL')
+  assert.equal(childHandle.hasExited(), true)
+  assert.equal(f.children.length, 1)
+  assert.equal(getEventListeners(controller.signal, 'abort').length, 0)
+  assert.equal(f.time.tasks.size, 0)
+})
+
+test('client: unrelated bind preflight and child errors never try another port', async () => {
+  const invalid = await fixture({ binds: [Object.assign(new Error('unavailable address'), { code: 'EADDRNOTAVAIL' })] })
+  await assert.rejects(invalid.start({ autoSwitchPort: true }), /unavailable address/)
+  assert.equal(invalid.servers.length, 1)
+  assert.equal(invalid.children.length, 0)
+
+  for (const error of [
+    'Error: authentication failed\n\nCaused by:\n    拒绝访问。 (os error 10013)',
+    'Error: connect upstream: EADDRINUSE',
+    'Error: bind SOCKS5 listener 127.0.0.1:21081: EADDRINUSE',
+    'Error: bind SOCKS5 listener 127.0.0.1:21080: Address not available (os error 99)',
+  ]) {
+    const f = await fixture()
+    const result = assert.rejects(f.start({ autoSwitchPort: true }), /code=1/)
+    await flush()
+    const child = f.children[0]
+    child.stderr.emit('data', error + '\n')
+    child.finish(1)
+    await result
+    assert.equal(f.children.length, 1)
+    assert.equal(f.servers.length, 1)
+    assert.equal(f.time.tasks.size, 0)
+  }
+})
+
+test('client: managed candidate retries are bounded', async () => {
+  const f = await fixture()
+  const result = assert.rejects(f.start({ autoSwitchPort: true }), /EADDRINUSE/)
+  for (let i = 0; i < 4; i++) {
+    await flush()
+    const child = f.children[i]
+    const addr = child.command.args[child.command.args.indexOf('--socks-listen') + 1]
+    child.stderr.emit('data', 'Error: bind SOCKS5 listener ' + addr + ': EADDRINUSE\n')
+    child.finish(1)
+  }
+  await result
+  assert.equal(f.children.length, 4)
+  assert.equal(f.time.tasks.size, 0)
 })

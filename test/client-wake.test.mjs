@@ -106,6 +106,8 @@ test('stop interrupts reconnect even when fetch ignores abort, and late failure 
   const ui=fixture();await ui.mount();const hung=deferred()
   ui.override(url=>url.endsWith('/reconnect')?hung.promise:null)
   const done=ui.button('重新连接').props.onClick();ui.render()
+  assert.equal(ui.button('重连中…').props.disabled,true)
+  assert.equal(ui.element('启动中…'),undefined)
   assert.equal(ui.button('停止托管').props.disabled,false)
   await ui.button('停止托管').props.onClick();await done;ui.render()
   const reconnect=ui.requests.find(({url})=>url.endsWith('/reconnect'))
@@ -280,5 +282,5 @@ test('explicit reconnect posts only reconnect then status and preserves dirty dr
 
 test('native child reconnect is visible without claiming authenticated online or blocking manual reconnect',async()=>{
   const ui=fixture();ui.setServer({...ui.server(),iwan:{managed:true,socksAlive:false,connecting:false,stopping:false,nativeReconnect:{since:1000,lastAttemptAt:1000,attempt:1,maxAttempts:5}},auth:{state:'idle',credentials:{state:'unknown',serverCount:1}},recovery:{state:'waiting',reason:'iWAN 客户端正在自行重连，暂不重启进程'}})
-  await ui.mount();assert.equal(ui.button('客户端重连中…').props.disabled,true);assert.equal(ui.button('重新连接').props.disabled,false);assert.equal(ui.element('认证有效'),undefined)
+  await ui.mount();assert.equal(ui.element('客户端重连中…').props.role,'status');assert.equal(ui.button('重新连接').props.disabled,false);assert.equal(ui.element('认证有效'),undefined)
 })

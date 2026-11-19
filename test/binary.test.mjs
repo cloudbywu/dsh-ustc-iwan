@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import zlib from 'node:zlib'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractFromZip, BINARY_NAME, MAX_BINARY_BYTES, cachedBinaryPath, resolveBinary, startDownload, waitForDownload, cancelDownload, downloadState } from '../lib/binary.js'
+import { binaryState, extractFromZip, BINARY_NAME, MAX_BINARY_BYTES, cachedBinaryPath, resolveBinary, startDownload, waitForDownload, cancelDownload, downloadState } from '../lib/binary.js'
 
 function crc32(data) {
   let crc=0xffffffff
@@ -61,6 +61,21 @@ test('explicit manual paths must be files, not directories',async t=>{
   const dir=await home(t);assert.ok(resolveBinary(dir).error)
   const file=path.join(dir,'manual.exe');fs.writeFileSync(file,'trusted',{mode:0o700})
   assert.equal(resolveBinary(file).kind,'configured')
+})
+
+test('an explicit invalid path cannot silently select a verified cached client', async t => {
+  const dir = await home(t)
+  const cached = cachedBinaryPath(), binary = Buffer.from('MZ-cached')
+  fs.mkdirSync(path.dirname(cached), { recursive: true })
+  fs.writeFileSync(cached, binary, { mode: 0o700 })
+  fs.writeFileSync(cached + '.meta.json', JSON.stringify({ bytes: binary.length, sha256: crypto.createHash('sha256').update(binary).digest('hex') }))
+  assert.equal(binaryState('  ').kind, 'downloaded')
+  for (const invalid of [dir, path.join(dir, 'missing.exe')]) {
+    const state = binaryState(invalid)
+    assert.equal(state.installed, false)
+    assert.equal(state.downloaded, false)
+    assert.match(state.error, /配置的 iWAN 客户端路径/)
+  }
 })
 
 test('download writes a verified binary and leaves no temporary files',async t=>{
