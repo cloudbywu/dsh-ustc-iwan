@@ -5,7 +5,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import childProcess from 'node:child_process'
 import { syncBuiltinESMExports } from 'node:module'
-import { readCredentialRelayIps, readCredentialStatus } from '../lib/credentials.js'
+import { readCredentialRelayIps, readCredentialRelayPlan, readCredentialStatus } from '../lib/credentials.js'
 
 // Every credential below is synthetic. No real user config is opened.
 const cipher = Buffer.alloc(40, 0xa5).toString('base64url')
@@ -31,6 +31,61 @@ test('TUN relay lookup returns only literal IPs and never exposes credentials', 
   assert.deepEqual(readCredentialRelayIps(options), ['192.0.2.1', '2001:db8::1'])
   fs.writeFileSync(f.file, 'bad JSON')
   assert.deepEqual(readCredentialRelayIps(options), [])
+})
+
+test('relay plans keep CLI selection, deduplicate endpoints, and reserve late IDs in file order', t => {
+  const f = fixture(t)
+  const plan = (choice) => readCredentialRelayPlan({ configDir: f.dir, server: choice })
+  const firstHost = 'synthetic-relay.example.test'
+  const { port, ...firstWithoutPort } = server({ name: 'Line default port', host: firstHost.toUpperCase() })
+  f.write(config([
+    server({ name: 'Line first', host: firstHost }),
+    firstWithoutPort,
+    server({ host: firstHost, port: port + 1 }),
+    server({ host: '192.0.2.4', passWord: 'invalid envelope' }),
+    server({ host: '192.0.2.5' }),
+    server({ host: '192.0.2.6' }),
+    server({ name: 'Line alias', host: firstHost }),
+    server({ host: '192.0.2.8' }),
+    server({ host: '192.0.2.9' }),
+    server({ host: '192.0.2.10' }),
+  ]))
+  for (const choice of [undefined, '', 'Line', '+01']) {
+    assert.deepEqual(plan(choice), { selected: '1', candidates: ['1', '3', '5', '6'] })
+  }
+  assert.deepEqual(plan('auto'), { selected: null, candidates: ['1', '3', '5', '6'] })
+  assert.deepEqual(plan('default port'), { selected: '2', candidates: ['2', '3', '5', '6'] })
+  for (const choice of ['+007', 'Line alias']) {
+    assert.deepEqual(plan(choice), { selected: '7', candidates: ['3', '5', '6', '7'] })
+  }
+  assert.deepEqual(plan('10'), { selected: '10', candidates: ['1', '3', '5', '10'] })
+  for (const choice of [4, '0', '4', '11', 'line', 'Auto']) {
+    assert.deepEqual(plan(choice), { selected: null, candidates: [] })
+  }
+})
+
+const emptyPlan = { selected: null, candidates: [] }
+
+test('relay plans retain a sole viable ID and do not fall back from an invalid selection', t => {
+  const f = fixture(t)
+  const plan = (choice) => readCredentialRelayPlan({ configDir: f.dir, server: choice })
+  assert.deepEqual(plan(), emptyPlan)
+  f.write(config([]))
+  assert.deepEqual(plan(), emptyPlan)
+  assert.deepEqual(plan('auto'), emptyPlan)
+  f.write(config([server(), server()]))
+  assert.deepEqual(plan(), { selected: '1', candidates: ['1'] })
+  assert.deepEqual(plan('2'), { selected: '2', candidates: ['2'] })
+  assert.deepEqual(plan('auto'), { selected: null, candidates: ['1'] })
+  f.write(config([
+    server({ name: 'First unavailable', passWord: '' }),
+    server({ name: 'Second unavailable', port: 0 }),
+    server({ host: ' ' }),
+    server({ name: 'Fourth unavailable' }),
+  ]))
+  assert.deepEqual(plan(), emptyPlan)
+  assert.deepEqual(plan('unavailable'), emptyPlan)
+  assert.deepEqual(plan('auto'), { selected: null, candidates: ['4'] })
 })
 
 test('missing file and empty server list report missing, without leaking paths', t => {
@@ -115,21 +170,28 @@ test('missing credentials and invalid known fields are distinguished', t => {
 
 test('invalid UTF-8, malformed/dangerous JSON, non-files and excessive input are rejected', t => {
   const f = fixture(t)
+  const plan = () => readCredentialRelayPlan({ configDir: f.dir, server: 'auto' })
   for (const content of ['{synthetic-secret', '{"__proto__":{"polluted":true}}', '{"constructor":"synthetic-secret"}', '{"prototype":{}}', Buffer.from([0xff, 0xfe])]) {
     fs.writeFileSync(f.file, content)
     const status = f.read()
     assert.equal(status.state, 'invalid')
     redacted(status, ['synthetic-secret', f.dir])
+    assert.deepEqual(plan(), emptyPlan)
   }
   assert.equal({}.polluted, undefined)
   fs.writeFileSync(f.file, ' '.repeat(1024 * 1024 + 1))
   assert.equal(f.read().state, 'invalid')
   assert.match(f.read().message, /1 MiB/)
-  f.write(config(Array.from({ length: 4097 }, () => ({}))))
+  assert.deepEqual(plan(), emptyPlan)
+  f.write(config([server(), ...Array.from({ length: 4096 }, () => ({}))]))
   assert.equal(f.read().state, 'invalid')
+  assert.deepEqual(plan(), emptyPlan)
+  f.write({ ...config(), domain: 1 })
+  assert.deepEqual(plan(), emptyPlan)
   fs.rmSync(f.file)
   fs.mkdirSync(f.file)
   assert.equal(f.read().state, 'invalid')
+  assert.deepEqual(plan(), emptyPlan)
 })
 
 test('file symlinks are not followed', t => {
@@ -154,6 +216,7 @@ test('read errors are clear and never include error data or user paths', t => {
     assert.equal(status.state, 'unknown')
     assert.match(status.message, code === 'EIO' ? /读取.*失败/ : /读取被拒绝/)
     redacted(status, ['synthetic-password', f.dir])
+    assert.deepEqual(readCredentialRelayPlan({ configDir: f.dir }), emptyPlan)
     mocked.mock.restore()
   }
 })
@@ -189,6 +252,7 @@ test('mocked symlink is rejected before opening, including hosts without symlink
   t.mock.method(fs, 'lstatSync', () => ({ isFile: () => false, isSymbolicLink: () => true }))
   const opened = t.mock.method(fs, 'openSync', () => { throw new Error('unexpected open') })
   assert.equal(f.read().state, 'invalid')
+  assert.deepEqual(readCredentialRelayPlan({ configDir: f.dir }), emptyPlan)
   assert.equal(opened.mock.callCount(), 0)
 })
 

@@ -104,7 +104,7 @@ https://github.com/cloudbywu/dsh-ustc-iwan
 | `https://github.com/cloudbywu/dsh-ustc-iwan` | 仓库 URL（推荐） |
 | `github:cloudbywu/dsh-ustc-iwan` | GitHub 简写 |
 | `git+https://github.com/cloudbywu/dsh-ustc-iwan.git` | 显式 git 地址 |
-| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.6` | 固定到某个 tag / 分支 / 提交 |
+| `https://github.com/cloudbywu/dsh-ustc-iwan#v0.1.7` | 固定到某个 tag / 分支 / 提交 |
 | `github:cloudbywu/dsh-ustc-iwan#<40 位提交号>` | 固定到具体提交（可被插件页更新检查追踪） |
 
 > 通过 Git 安装时，插件以**副本**形式装进 profile 的 `node_modules`。要升级，
@@ -140,7 +140,7 @@ C:\Users\<你>\dsh-ustc-iwan
 file:C:\Users\<你>\dsh-ustc-iwan
 ```
 
-或下载 [v0.1.6 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.6.zip) 解压，再按同样方式填入解压目录。
+或下载 [v0.1.7 源码 ZIP](https://github.com/cloudbywu/dsh-ustc-iwan/archive/refs/tags/v0.1.7.zip) 解压，再按同样方式填入解压目录。
 
 > **本地路径必须以绝对路径给出**（相对路径会被插件管理器拒绝）。
 > `link:` 不会安装依赖。链接或从源码目录安装前，请先在项目目录运行 `npm ci --ignore-scripts --omit=peer`；改代码后重启应用生效。
@@ -167,7 +167,7 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 ## 首次使用
 
 1. 打开 **设置 → USTC iWAN**；
-2. 点 **下载 iwan-client-oidc**（自动存到 `<DSH_HOME>/cache/ustc-iwan/`，
+2. 保持默认原客户端时，点 **下载 iwan-client-oidc**（自动存到 `<DSH_HOME>/cache/ustc-iwan/`，
    不做系统级安装；也可自行解压下载后填入「客户端路径」）。上游提供 ZIP，插件解出 exe，
    并在使用自动缓存前校验 SHA-256；旧缓存缺少记录时请重新下载。手动路径由用户确认可信。
    此哈希用于检测本地缓存变化，不是上游发布签名。
@@ -178,6 +178,14 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 
 4. 新配置默认启用「托管 iWAN 客户端」；下载或认证完成后自动尝试连接。已有关闭选项会保留，也可手动点 **启动 iWAN**；
 5. 用 **测试分流** 输入 `llm.ustc.edu.cn`，显示「走 iWAN」表示规则命中；还需确认 SOCKS5 在线并实际访问目标。
+
+### 选择 iWAN 后端
+
+在「USTC iWAN → 配置 → iWAN 后端」选择并保存。默认是 **原 iWAN 客户端**。也可选择 **内置 Node.js（实验性）**：无需下载可执行文件或管理员权限，直接用卡片做学校统一身份认证或读取现有加密线路配置。保存后会后台切换托管连接，已有隧道可能中断。若连接失败，已保存的后端不自动回退，卡片会显示结果；可查看日志、重新连接或切回原后端。关闭托管时仍使用用户配置的外部 SOCKS。
+
+内置后端只实现本插件需要的 IPv4 出站 TCP、回环 SOCKS5 CONNECT 和隧道内 IPv4 DNS。不提供系统 TUN、IPv6、UDP 代理、测速选线（`auto`）或上游服务端模式。隧道 DNS 与分流 DNS 分开。Node.js 隧道 DNS 推荐留空使用 `202.38.64.1`，或填写可从校内访问的 IPv4 地址（可带端口）；线路入口需为字面 IPv4，选择项可留空或填写序号/名称。无法兼容当前网关或高吞吐场景时，可保存切回原客户端，不会丢失加密线路配置。有关 Clash TUN 的线路入口排除要求对两个后端相同。
+
+实现依据 [上游固定提交](https://github.com/yyy1mu/ustc-iwan/tree/60237d88f7f1f2df4a21c79e61af392cadad4944) 的线协议独立编写，不包含上游 Rust、第三方 TCP 栈或原生扩展。
 
 ## 设置卡片
 
@@ -220,7 +228,9 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 - 托管默认显式使用 `--server 1`，等价于原先空线路选择第一条；避免上游每次内部重连再次等待交互选线。显式线路或 `auto` 不被改写。
 - `connection ended: ...; reconnecting (...)` 表示原生会话中断，此时进程存活不代表 SOCKS 监听和认证仍有效。卡片显示客户端重连中，直到新的正确监听行出现才恢复认证证明。
 - 插件优先等原生客户端自行恢复：单轮无新进度最多 30 秒、一次断线总计最多 90 秒；超时或进程退出才由监测器接管，手动停止/重连仍可立即打断。
-- 仅对明确回环地址的本地 SOCKS 建立期传输错误，最多等待 3 秒、最多尝试 7 次，再按既有策略回退直连；路由、所有尝试和回退共用同一总时限。认证拒绝、坏协议、目标错误和握手超时不泛重试。
+- 仅对明确回环地址的本地 SOCKS 建立期传输错误，最多等待 3 秒、最多尝试 7 次，再按既有策略回退直连；认证拒绝、坏协议和目标拒绝不触发自动切换。
+- 若所选线路的 SOCKS5 握手经常超时，可在「USTC iWAN → 配置」勾选「超时时自动切换线路」并保存（默认关闭、仅限托管）。插件会以最多四个已保存的不同出口尝试建立隧道；成功后沿用该线路，不修改首选线路。全部候选不可用则返回代理连接错误，不回退直连。
+- 切换会重建托管客户端，可能中断它已有的隧道；不会重放已发送的业务请求。手动「重新连接」可重新使用配置的首选线路。关闭开关或使用外部客户端时维持原策略。
 - 上述等待发生在 CONNECT 200 和 HTTP 业务字节发送前；一旦隧道已交接，不自动重放模型 POST、已建立隧道或响应流，避免增加重复执行/计费风险。宿主自身的模型请求重试是独立机制。
 - `send VPN packet` 是上游隧道 UDP 发送错误的外层上下文，不足以定位 Windows errno。上述修复避免选线挂起、两套重连相互打断和短闪断过早回退，不等于已根治所有底层网络错误。
 
@@ -262,12 +272,15 @@ pnpm add @cloudbywu/dsh-ustc-iwan
 | `listenPort` | `18118` | 本地分流代理端口 |
 | `iwanSocksHost` / `iwanSocksPort` | `127.0.0.1` / `21080` | 托管 SOCKS5 首选地址；已有配置沿用保存值 |
 | `manageClient` | `true` | 新配置默认托管；客户端和认证配置就绪后自动连接，保留已有明确关闭选项 |
+| `iwanBackend` | `native` | `native` 原客户端，`node` 内置纯 Node.js 实验后端；后台切换限于插件托管 |
+| `autoFailover` | `false` | 仅在托管时生效；SOCKS5 握手超时后尝试其它已保存的出口 |
 | `iwanClientPath` | 空 | 托管客户端路径；留空用已下载副本，显式路径无效会报错，不会回退 |
-| `iwanServer` | 空 | 线路名或序号（传给 `--server`） |
+| `iwanServer` | 空 | 线路名或序号；原客户端还支持 `auto` 测速 |
 | `upstreamProxy` | 空（自动） | 非 USTC 流量的上游 HTTP(S) 代理；留空沿用启动时的环境代理，再无则直连；自动探测值不写入配置 |
 | `cidrs` | 上表 11 段 | IPv4 CIDR，支持换行、空白或逗号分隔 |
 | `domainSuffixes` | `ustc.edu.cn,ustclug.org,ustc.life` | 域名后缀兜底 |
-| `dnsServer` | 系统 | 分流解析用 DNS；接受 IPv4、IPv6、`IPv4:端口` 或 `[IPv6]:端口`，留空使用默认解析；TUN fake-ip 环境可尝试 `223.5.5.5` |
+| `dnsServer` | 系统 | 分流规则解析用 DNS；接受 IPv4、IPv6 及带端口形式。使用原客户端时非空值也继续传给原生隧道，Node.js 隧道不使用此值。 |
+| `iwanTunnelDns` | 空（`202.38.64.1`） | 仅内置 Node.js 托管使用，校内 IPv4 DNS，可带端口。 |
 | `verbose` | `false` | 逐请求日志 |
 
 托管启动时，若首选端口已被进程占用或被 Windows 保留，插件会尝试操作系统分配的可用端口。运行状态显示实际端口，分流和健康检查随之切换；保存的首选端口不变，下次启动仍优先尝试它。使用外部客户端时请关闭托管并填写其实际监听地址（例如 `127.0.0.1:1080`）；不会改动外部进程或自动切换其端口。
@@ -328,6 +341,8 @@ lib/reconnect-monitor.js 休眠心跳、健康检查与重试退避
 lib/binary.js         iWAN 客户端下载
 lib/auth.js           应用内统一身份认证
 lib/credentials.js    线路配置的脱敏检查
+lib/node-iwan/       内置 Node.js 授权、UDP 隧道、IPv4/TCP/DNS 和 SOCKS5
+lib/relay-failover.js 托管出口自动切换与耗尽保护
 lib/clash-tun.js      Clash TUN 检测、加密备份和安全回退
 lib/clash-yaml.js     TUN 排除项的 YAML 检测与局部追加
 docs/clash/           Clash TUN 配置指南和 USTC 规则集

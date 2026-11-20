@@ -2,6 +2,54 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fixture, deferred } from './helpers/client-fixture.mjs'
 
+test('managed failover shows progress, the active line and an error only after exhausting candidates',async()=>{
+  const ui=fixture()
+  const base={...ui.server(),settings:{...ui.server().settings,manageClient:true,autoFailover:true,iwanServer:'教育网'}}
+  ui.setServer(base);await ui.mount()
+  assert.doesNotMatch(ui.text(),/正在尝试其他 iWAN 线路|已自动切换 iWAN 线路|托管 iWAN 线路已全部尝试/)
+  assert.deepEqual(ui.intervalMs(),[10000])
+  assert.equal(ui.field('iwanServer').props.value,'教育网')
+  const change=async (failover,managed,socksAlive)=>{
+    ui.setServer({...base,iwan:{managed,socksAlive,failover}})
+    await ui.button('刷新状态').props.onClick();ui.render()
+    assert.equal(ui.field('iwanServer').props.value,'教育网')
+    assert.equal(ui.button('保存配置').props.disabled,true)
+  }
+  await change({state:'switching',server:null,attempt:2,total:3},false,false)
+  assert.equal(ui.element('SOCKS5 握手超时，正在尝试其他 iWAN 线路…').props.role,'status')
+  assert.ok(ui.text().includes('线路尝试 2/3'))
+  assert.doesNotMatch(ui.text(),/当前线路：|连接失败/)
+  assert.deepEqual(ui.intervalMs(),[1500])
+  await change({state:'switched',server:'2',attempt:2,total:3},true,true)
+  assert.equal(ui.element('已自动切换 iWAN 线路').props.role,'status')
+  assert.match(ui.text(),/当前线路：第 2 条.*线路尝试 2[/]3/)
+  assert.doesNotMatch(ui.text(),/连接失败/)
+  assert.deepEqual(ui.intervalMs(),[10000])
+  await change({state:'exhausted',server:null,attempt:3,total:3},false,false)
+  assert.equal(ui.element('托管 iWAN 线路已全部尝试，连接失败；不会回退直连。').props.role,'alert')
+  assert.ok(ui.text().includes('线路尝试 3/3'))
+  assert.doesNotMatch(ui.text(),/当前线路：/)
+  await change(null,false,false)
+  assert.doesNotMatch(ui.text(),/托管 iWAN 线路已全部尝试/)
+  assert.ok(ui.requests.every(({init})=>init.method!=='POST'))
+})
+
+test('external or non-opted-in mode does not display failover status or change the offline route hint',async()=>{
+  for(const [manageClient,autoFailover,external] of [[false,true,false],[true,false,false],[true,true,true],[true,true,false]]) {
+    const ui=fixture()
+    const managedOptIn=manageClient && autoFailover && !external
+    ui.setServer({...ui.server(),settings:{...ui.server().settings,manageClient,autoFailover},
+      recovery:external?{state:'external'}:undefined,iwan:{managed:false,socksAlive:false,
+      failover:{state:'exhausted',server:null,attempt:3,total:3}}})
+    ui.override(url=>url.endsWith('/test')?ui.response({host:'llm.ustc.edu.cn',decision:{kind:'iwan'}}):null)
+    await ui.mount()
+    await ui.button('测试分流').props.onClick();ui.render()
+    assert.match(ui.text(),/当前 iWAN SOCKS5 离线/)
+    assert.equal(ui.text().includes('实际请求将暂回退直连'),!managedOptIn)
+    assert.equal(ui.text().includes('托管 iWAN 线路已全部尝试'),managedOptIn)
+  }
+})
+
 test('persisted downloaded client shows installed state even when current progress is idle',async()=>{
   const ui=fixture();await ui.mount()
   assert.equal(ui.element('已下载').props.role,'status');assert.equal(ui.button('已下载'),undefined)
@@ -137,7 +185,7 @@ test('settings form validates ports and upstream proxy before posting and discar
 
   ui.input('http://127.0.0.1:7890').props.onChange({target:{value:'socks5://127.0.0.1:1080'}});ui.render()
   await ui.button('保存配置').props.onClick();ui.render()
-  assert.match(ui.text(),/「上游代理」格式应为/)
+  assert.match(ui.text(),/「上游代理」请输入 HTTP[(]S[)] 代理地址/)
   assert.equal(ui.requests.some(x=>x.url.endsWith('/settings')),false)
 })
 
@@ -319,4 +367,64 @@ test('the guide does not call a managed session ready when SOCKS or host policy 
   assert.ok(ui.element('使用指引 · 已就绪'))
   ui.button('查看指引').props.onClick();ui.render()
   assert.match(ui.text(),/请实际访问科大模型或校内站点确认可达/)
+})
+
+test('pure Node auth and managed connection do not need the original executable',async()=>{
+  const ui=fixture();const base=ui.server()
+  ui.setServer({...base,settings:{...base.settings,manageClient:true,iwanBackend:'node',iwanClientPath:'missing.exe'},
+    binary:{installed:false,path:null,error:'客户端找不到'},auth:{state:'idle',canStart:true,credentials:{state:'missing',serverCount:0}}})
+  ui.override(url=>{
+    if(url.endsWith('/auth/start')) {
+      ui.setServer({...ui.server(),auth:{...ui.server().auth,state:'awaiting',id:'test-session',authorizeUrl:'https://example.test/authorize'}})
+      return ui.response({id:'test-session'})
+    }
+    if(url.endsWith('/connect')) {
+      ui.setServer({...ui.server(),iwan:{managed:true,socksAlive:true,activeBackend:'node'}})
+      return ui.response({managed:true})
+    }
+    return null
+  })
+  await ui.mount()
+  assert.ok(ui.element('首次使用指引（已完成 1/3 步）'))
+  assert.match(ui.text(),/已选择纯 Node[.]js 后端，无需下载/)
+  assert.doesNotMatch(ui.text(),/客户端找不到|未找到可执行文件|请先下载客户端或配置/)
+  assert.equal(ui.button('下载 iwan-client-oidc'),undefined)
+  assert.equal(ui.field('iwanClientPath'),undefined)
+  assert.equal(ui.button('开始认证').props.disabled,false)
+  assert.equal(ui.button('启动 iWAN').props.disabled,true)
+  await ui.button('开始认证').props.onClick();ui.render()
+  assert.ok(ui.element('打开统一身份认证页面 ↗'))
+  assert.ok(ui.requests.some(({url,init})=>url.endsWith('/auth/start')&&init.method==='POST'))
+
+  ui.setServer({...ui.server(),auth:{state:'done',canStart:true,credentials:base.auth.credentials}})
+  await ui.button('刷新状态').props.onClick();ui.render()
+  assert.equal(ui.button('启动 iWAN').props.disabled,false)
+  assert.equal(ui.button('重新连接').props.disabled,false)
+  await ui.button('启动 iWAN').props.onClick();ui.render()
+  assert.ok(ui.element('当前托管后端：纯 Node.js（实验）'))
+  assert.ok(ui.element('托管运行中'))
+})
+
+test('pure Node auth can provision saved routes while external SOCKS mode disables managed connection',async()=>{
+  const ui=fixture();const base=ui.server()
+  ui.setServer({...base,settings:{...base.settings,manageClient:false,iwanBackend:'node'},
+    binary:{installed:false,path:null},auth:{...base.auth,canStart:true}})
+  await ui.mount()
+  assert.equal(ui.button('重新认证').props.disabled,false)
+  assert.equal(ui.button('连接并验证').props.disabled,true)
+  assert.equal(ui.button('启动 iWAN').props.disabled,true)
+  assert.equal(ui.button('重新连接').props.disabled,true)
+  assert.match(ui.text(),/当前使用外部 SOCKS5/)
+  assert.match(ui.text(),/仍可通过纯 Node[.]js 认证并保存线路/)
+  assert.doesNotMatch(ui.text(),/未准备 iWAN 客户端|请先下载客户端或配置/)
+  assert.ok(ui.element('首次使用指引（已完成 1/3 步）'))
+  assert.ok(ui.element('1. 准备外部 SOCKS5 客户端'))
+  assert.ok(ui.element('外部离线'))
+  const verifyHint = ui.button('连接并验证').props['aria-describedby']
+  assert.ok(ui.nodes().some(n=>n.props.id===verifyHint&&n.children[0].includes('关闭托管时无法由插件连接并验证')))
+  ui.setServer({...ui.server(),iwan:{managed:false,socksAlive:true}})
+  await ui.button('刷新状态').props.onClick();ui.render()
+  ui.button('查看指引').props.onClick();ui.render()
+  assert.ok(ui.element('外部在线'))
+  assert.match(ui.text(),/外部 SOCKS5 已在线/)
 })

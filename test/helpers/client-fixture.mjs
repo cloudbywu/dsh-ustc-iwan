@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import vm from 'node:vm'
 
-export const initial = () => ({settings:{enabled:true,listenPort:18118,iwanSocksHost:'127.0.0.1',iwanSocksPort:21080,manageClient:false,iwanClientPath:'',iwanServer:'',upstreamProxy:'',cidrs:'',domainSuffixes:'ustc.edu.cn',dnsServer:'',verbose:false},proxy:{listening:true,port:18118},policyInstalled:true,environmentOverrides:[],autoUpstreamProxy:'',iwan:{socksAlive:false,managed:false},binary:{path:'mock.exe',kind:'downloaded',installed:true,downloaded:true,version:'v1.0',checking:false,latestVersion:null,updateAvailable:null},download:{state:'idle'},auth:{state:'idle',credentials:{state:'unknown',serverCount:1,revision:'saved'}},log:[]})
+export const initial = () => ({settings:{enabled:true,listenPort:18118,iwanSocksHost:'127.0.0.1',iwanSocksPort:21080,manageClient:false,autoFailover:false,iwanClientPath:'',iwanServer:'',upstreamProxy:'',cidrs:'',domainSuffixes:'ustc.edu.cn',dnsServer:'',iwanTunnelDns:'',verbose:false},proxy:{listening:true,port:18118},policyInstalled:true,environmentOverrides:[],autoUpstreamProxy:'',iwan:{socksAlive:false,managed:false},binary:{path:'mock.exe',kind:'downloaded',installed:true,downloaded:true,version:'v1.0',checking:false,latestVersion:null,updateAvailable:null},download:{state:'idle'},auth:{state:'idle',credentials:{state:'unknown',serverCount:1,revision:'saved'}},log:[]})
 export const tick = () => new Promise(setImmediate)
 export const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 export function fixture(options = {}) {
@@ -34,7 +34,7 @@ export function fixture(options = {}) {
   const render=()=>{cursor=0;tree=Component();const effects=pending;pending=[];effects.forEach(fn=>fn());return tree}
   const nodes=node=>!node||typeof node!=='object'?[]:[node,...(node.children??[]).flat(Infinity).flatMap(nodes)]
   return {requests,element:text=>nodes(tree).find(n=>n.children.includes(text)),render,async mount(){render();await tick();render()},poll:()=>[...intervals.values()].forEach(({fn})=>fn()),
-    field:key=>nodes(tree).find(n=>['input','textarea'].includes(n.type)&&n.props.id?.endsWith('-'+key)),
+    field:key=>nodes(tree).find(n=>['input','textarea','select'].includes(n.type)&&n.props.id?.endsWith('-'+key)),
     input:placeholder=>nodes(tree).find(n=>n.type==='input'&&n.props.placeholder===placeholder),
     button:text=>nodes(tree).find(n=>n.type==='button'&&n.children.includes(text)),
     text:()=>nodes(tree).flatMap(n=>n.children.filter(c=>typeof c==='string')).join(' '),

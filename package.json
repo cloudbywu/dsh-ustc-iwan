@@ -1,6 +1,6 @@
 {
   "name": "@cloudbywu/dsh-ustc-iwan",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "词元工坊插件：访问 USTC 模型与校内站点时走 ustc-iwan，其余流量保持原样，与 Clash TUN / WireGuard / Panabit iWAN 共存。",
   "license": "MIT",
   "author": "cloudbywu",

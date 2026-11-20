@@ -16,7 +16,7 @@ const snapshot = (patch = {}) => ({
 })
 const calls = ui => ui.requests.filter(({url}) => url.startsWith(path))
 const writes = ui => calls(ui).filter(({init}) => init.method === 'POST')
-const mode = ui => ui.nodes().find(n => n.type === 'select')
+const mode = ui => ui.nodes().find(n => n.type === 'select' && n.props.id?.endsWith('-clash-tun-mode'))
 const select = (ui, value) => { mode(ui).props.onChange({target:{value}}); ui.render() }
 const action = (ui, label) => ui.button(label).props.onClick
 const click = (ui, label) => { const done = action(ui, label)(); ui.render(); return done }
